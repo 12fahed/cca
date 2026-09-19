@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "verified_on": "2026-09-19",
+  "currency": "USD",
+  "unit": "per_million_tokens",
+  "_comment": [
+    "All figures are absolute USD per million tokens, transcribed from the official",
+    "price sheet. Cache columns are stored absolutely rather than as multipliers so",
+    "that per-model exceptions (Fable/Mythos 5.1 cache reads) need no special case.",
+    "Model IDs marked inferred:true were not observed in a real transcript; matching",
+    "is most-specific-prefix-wins, so dated suffixes and [1m] resolve to these entries."
+  ],
+
+  "modifiers": {
+    "batch": {
+      "multiplier": 0.5,
+      "applies_to": ["input", "output", "cache_write_5m", "cache_write_1h", "cache_read"],
+      "note": "Claude Code never batches; present for completeness. Not combinable with fast mode."
+    },
+    "inference_geo_us": {
+      "multiplier": 1.1,
+      "applies_to": ["input", "output", "cache_write_5m", "cache_write_1h", "cache_read"],
+      "note": "Claude 4.6 and later only. usage.inference_geo == 'us'. Absent, null, 'global' or 'not_available' => 1.0."
+    }
+  },
+
+  "fast_mode": {
+    "supported_models": ["claude-opus-5", "claude-opus-4-8"],
+    "standard_speed_models": ["claude-opus-4-6"],
+    "error_models": ["claude-opus-4-7"],
+    "note": [
+      "speed=='fast' swaps the base input/output pair and cache columns are recomputed",
+      "from the fast base (1.25x / 2x / 0.1x). On Opus 4.6 a fast request runs at standard",
+      "speed and bills at STANDARD rates - do not apply the fast pair. On Opus 4.7 the",
+      "request errors, so a fast record should never exist; warn if one is seen.",
+      "Fast mode is first-party API only and cannot combine with batch."
+    ]
+  },
+
+  "models": [
+    {
+      "id": "claude-fable-5-1",
+      "name": "Claude Fable 5.1",
+      "rates": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 0.25 },
+      "note": "Cache reads are 0.025x base input, not the usual 0.1x."
+    },
+    {
+      "id": "claude-mythos-5-1",
+      "name": "Claude Mythos 5.1",
+      "inferred_id": true,
+      "rates": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 0.25 },
+      "note": "Limited availability. Cache reads are 0.025x base input."
+    },
+    {
+      "id": "claude-fable-5",
+      "name": "Claude Fable 5",
+      "rates": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 1.00 },
+      "note": "Differs from 5.1 ONLY in cache reads ($1 vs $0.25). Prefix matching must not collapse these."
+    },
+    {
+      "id": "claude-mythos-5",
+      "name": "Claude Mythos 5",
+      "inferred_id": true,
+      "rates": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 1.00 }
+    },
+    {
+      "id": "claude-opus-5",
+      "name": "Claude Opus 5",
+      "rates": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_write_1h": 10.00, "cache_read": 0.50 },
+      "speeds": {
+        "fast": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 1.00 }
+      }
+    },
+    {
+      "id": "claude-opus-4-8",
+      "name": "Claude Opus 4.8",
+      "rates": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_write_1h": 10.00, "cache_read": 0.50 },
+      "speeds": {
+        "fast": { "input": 10.00, "output": 50.00, "cache_write_5m": 12.50, "cache_write_1h": 20.00, "cache_read": 1.00 }
+      }
+    },
+    {
+      "id": "claude-opus-4-7",
+      "name": "Claude Opus 4.7",
+      "rates": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_write_1h": 10.00, "cache_read": 0.50 }
+    },
+    {
+      "id": "claude-opus-4-6",
+      "name": "Claude Opus 4.6",
+      "rates": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_write_1h": 10.00, "cache_read": 0.50 },
+      "note": "speed=='fast' runs at standard speed and bills at these standard rates."
+    },
+    {
+      "id": "claude-opus-4-5",
+      "name": "Claude Opus 4.5",
+      "rates": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_write_1h": 10.00, "cache_read": 0.50 }
+    },
+    {
+      "id": "claude-opus-4-1",
+      "name": "Claude Opus 4.1",
+      "retired": true,
+      "rates": { "input": 15.00, "output": 75.00, "cache_write_5m": 18.75, "cache_write_1h": 30.00, "cache_read": 1.50 },
+      "note": "Retired on first-party; still billable on Bedrock and Google Cloud."
+    },
+    {
+      "id": "claude-opus-4",
+      "name": "Claude Opus 4",
+      "retired": true,
+      "rates": { "input": 15.00, "output": 75.00, "cache_write_5m": 18.75, "cache_write_1h": 30.00, "cache_read": 1.50 },
+      "note": "Retired on first-party; still billable on Google Cloud."
+    },
+    {
+      "id": "claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "rates": { "input": 2.00, "output": 10.00, "cache_write_5m": 2.50, "cache_write_1h": 4.00, "cache_read": 0.20 },
+      "note": "The $2/$10 introductory rate became the standard price; the scheduled rise to $3/$15 on 2026-09-01 did not happen."
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "rates": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_write_1h": 6.00, "cache_read": 0.30 },
+      "note": "50% more expensive than Sonnet 5. The prefix-matching trap - regression test required."
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "name": "Claude Sonnet 4.5",
+      "rates": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_write_1h": 6.00, "cache_read": 0.30 }
+    },
+    {
+      "id": "claude-sonnet-4",
+      "name": "Claude Sonnet 4",
+      "retired": true,
+      "rates": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_write_1h": 6.00, "cache_read": 0.30 }
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "name": "Claude Haiku 4.5",
+      "rates": { "input": 1.00, "output": 5.00, "cache_write_5m": 1.25, "cache_write_1h": 2.00, "cache_read": 0.10 },
+      "note": "Observed locally as claude-haiku-4-5-20251001; must resolve to this undated entry."
+    },
+    {
+      "id": "claude-haiku-3-5",
+      "name": "Claude Haiku 3.5",
+      "retired": true,
+      "rates": { "input": 0.80, "output": 4.00, "cache_write_5m": 1.00, "cache_write_1h": 1.60, "cache_read": 0.08 }
+    }
+  ],
+
+  "server_tools": {
+    "web_search": {
+      "usd_per_request": 0.01,
+      "usage_field": "server_tool_use.web_search_requests",
+      "note": "$10 per 1,000 searches. Errored searches are not billed, but the transcript does not distinguish them - treat the count as an upper bound."
+    },
+    "web_fetch": {
+      "usd_per_request": 0.00,
+      "usage_field": "server_tool_use.web_fetch_requests",
+      "note": "No charge beyond the token cost of fetched content. Parse for --verbose only."
+    }
+  },
+
+  "non_models": ["<synthetic>"],
+
+  "tokenizer_note": "Claude 4.7 and later use a tokenizer producing roughly 30% more tokens for the same text. This does not affect cost math (actual tokens are counted) but makes raw token counts non-comparable across model generations. Worth a README line."
+}
