@@ -49,6 +49,58 @@ type options struct {
 	noSidechains bool
 	verbose      bool
 	ascii        bool
+
+	// set records which flags the user actually passed. A bool flag left alone
+	// is indistinguishable from one passed as false, so without this the config
+	// file could never be overridden back to a default.
+	set map[string]bool
+}
+
+// markSet records the flags seen so far. It is called after each parse pass,
+// since flags may sit on either side of the subcommand.
+func (o *options) markSet(fs *flag.FlagSet) {
+	if o.set == nil {
+		o.set = make(map[string]bool)
+	}
+	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
+}
+
+// overrides translates the flags that were passed into config overrides,
+// leaving the rest nil so the config file and defaults can supply them.
+func (o *options) overrides() config.Overrides {
+	var ov config.Overrides
+	if o.waterMLPer1k.set {
+		ov.WaterMLPer1k = &o.waterMLPer1k.value
+	}
+	if o.set["claude-dir"] {
+		ov.ClaudeDir = &o.claudeDir
+	}
+	if o.set["pricing"] {
+		ov.Pricing = &o.pricingPath
+	}
+	if o.set["no-sidechains"] {
+		ov.NoSidechains = &o.noSidechains
+	}
+	if o.set["ascii"] {
+		ov.ASCII = &o.ascii
+	}
+	if o.set["no-color"] {
+		ov.NoColor = &o.noColor
+	}
+	return ov
+}
+
+// resolve loads the config file and applies flag over file over default.
+func (o *options) resolve() (config.Resolved, error) {
+	path, err := config.ConfigPath()
+	if err != nil {
+		return config.Resolved{}, err
+	}
+	file, found, err := config.LoadFile(path)
+	if err != nil {
+		return config.Resolved{}, err
+	}
+	return config.Resolve(o.overrides(), file, found, path)
 }
 
 func (o *options) register(fs *flag.FlagSet) {
@@ -129,12 +181,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return usageExit(err)
 	}
+	opts.markSet(fs)
 	name := "summary"
 	if rest := fs.Args(); len(rest) > 0 {
 		name = rest[0]
 		if err := fs.Parse(rest[1:]); err != nil {
 			return usageExit(err)
 		}
+		opts.markSet(fs)
 		if extra := fs.Args(); len(extra) > 0 {
 			fmt.Fprintf(stderr, "cca: unexpected argument %q\n", extra[0])
 			return exitUsage
@@ -189,22 +243,20 @@ func notImplemented(*options, io.Writer) error { return errNotImplemented }
 // them, aggregate, and render. The logic lives in the internal packages; this
 // only connects them.
 func runSummary(o *options, out io.Writer) error {
-	table, err := pricing.LoadWithFallback(o.pricingPath)
+	cfg, err := o.resolve()
 	if err != nil {
 		return err
 	}
 
-	dir := o.claudeDir
-	if dir == "" {
-		if dir, err = config.DefaultClaudeDir(); err != nil {
-			return fmt.Errorf("locate the Claude directory: %w", err)
-		}
+	table, err := pricing.LoadWithFallback(cfg.PricingPath)
+	if err != nil {
+		return err
 	}
 
 	records, stats, err := transcript.Load(transcript.Options{
-		ClaudeDir:         dir,
+		ClaudeDir:         cfg.ClaudeDir,
 		NonModels:         table.NonModelSet(),
-		ExcludeSidechains: o.noSidechains,
+		ExcludeSidechains: cfg.NoSidechains,
 	})
 	if err != nil {
 		if errors.Is(err, transcript.ErrNoClaudeDir) {
@@ -225,14 +277,9 @@ func runSummary(o *options, out io.Writer) error {
 		Stats:       stats,
 	})
 
-	ml := water.DefaultMLPer1kTokens
-	if o.waterMLPer1k.set {
-		ml = o.waterMLPer1k.value
-	}
-
 	return render.Summary(out, rep, render.Options{
-		ASCII: o.ascii,
-		Water: water.For(rep.Overall.Tokens.Total(), ml),
+		ASCII: cfg.ASCII,
+		Water: water.For(rep.Overall.Tokens.Total(), cfg.WaterMLPer1k),
 	})
 }
 

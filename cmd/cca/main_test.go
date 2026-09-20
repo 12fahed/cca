@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -180,5 +181,118 @@ func TestWaterFlagUnsetUntilPassed(t *testing.T) {
 	}
 	if !opts.waterMLPer1k.set || opts.waterMLPer1k.value != 0.5 {
 		t.Errorf("water flag not captured: %+v", opts.waterMLPer1k)
+	}
+}
+
+// isolateConfig points config discovery at a temporary directory so the tests
+// never read the real one, and returns that directory.
+func isolateConfig(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir := filepath.Join(home, ".config", "cca")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func writeUserConfig(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runSummaryOutput(t *testing.T, args ...string) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	return stdout.String()
+}
+
+func TestConfigFileSuppliesWaterRate(t *testing.T) {
+	dir := isolateConfig(t)
+	writeUserConfig(t, dir, `{"water_ml_per_1k_tokens": 0.75}`)
+
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t))
+	if !strings.Contains(out, "0.75 mL / 1k tokens") {
+		t.Errorf("config file water rate not applied:\n%s", out)
+	}
+}
+
+// Flag over file over default is the whole contract.
+func TestFlagBeatsConfigFile(t *testing.T) {
+	dir := isolateConfig(t)
+	writeUserConfig(t, dir, `{"water_ml_per_1k_tokens": 0.75}`)
+
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t), "--water-ml-per-1k", "2.25")
+	if !strings.Contains(out, "2.25 mL / 1k tokens") {
+		t.Errorf("flag should beat the config file:\n%s", out)
+	}
+	if strings.Contains(out, "0.75 mL") {
+		t.Error("config value leaked through despite an explicit flag")
+	}
+}
+
+func TestDefaultWaterRateWithoutConfigFile(t *testing.T) {
+	isolateConfig(t)
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t))
+	if !strings.Contains(out, "0.30 mL / 1k tokens") {
+		t.Errorf("want the default rate with no config file:\n%s", out)
+	}
+}
+
+func TestConfigFileSuppliesASCIIAndClaudeDir(t *testing.T) {
+	dir := isolateConfig(t)
+	claude := fixtureDir(t)
+	writeUserConfig(t, dir, `{"ascii": true, "claude_dir": `+strconv.Quote(claude)+`}`)
+
+	// No --claude-dir flag: the path has to come from the file.
+	out := runSummaryOutput(t)
+	if !strings.Contains(out, "claude-opus-5") {
+		t.Errorf("claude_dir from the config file was not used:\n%s", out)
+	}
+	for _, glyph := range []string{"·", "≈", "─"} {
+		if strings.Contains(out, glyph) {
+			t.Errorf("ascii from the config file was not applied, found %q", glyph)
+		}
+	}
+}
+
+func TestBrokenConfigFileIsReported(t *testing.T) {
+	dir := isolateConfig(t)
+	writeUserConfig(t, dir, `{"water_ml_per_1k_tokens": -4}`)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", fixtureDir(t)}, &stdout, &stderr); code != exitError {
+		t.Fatalf("exit = %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr.String(), "water_ml_per_1k_tokens") {
+		t.Errorf("error should name the offending setting, got: %s", stderr.String())
+	}
+}
+
+func TestPricingOverrideDiscoveredFromConfigDir(t *testing.T) {
+	dir := isolateConfig(t)
+	// A table with only one model, so its effect is unmistakable.
+	table := `{"schema_version":1,"currency":"USD","unit":"per_million_tokens",
+	  "models":[{"id":"claude-opus-5","name":"Opus",
+	    "rates":{"input":1000,"output":1000,"cache_write_5m":1000,
+	             "cache_write_1h":1000,"cache_read":1000}}],
+	  "non_models":["<synthetic>"]}`
+	if err := os.WriteFile(filepath.Join(dir, "pricing.json"), []byte(table), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t))
+	// 8000 tokens at $1000/M is $8.00; the embedded table would give cents.
+	if !strings.Contains(out, "$8.00") {
+		t.Errorf("pricing override in the config dir was not picked up:\n%s", out)
 	}
 }
