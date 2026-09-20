@@ -32,6 +32,10 @@ type Options struct {
 	// Water is the estimate to display. It is computed by the caller, which
 	// owns the configured rate.
 	Water water.Estimate
+	// View names the command being rendered, for machine-readable output.
+	View string
+	// Color styles output. The zero value writes plain text.
+	Color Palette
 }
 
 const indent = "  "
@@ -44,9 +48,19 @@ const tabPadding = 2
 // flushTable copies a rendered table into the output, dropping the trailing
 // padding tabwriter leaves behind and applying prefix to each line.
 func flushTable(b *strings.Builder, buf *bytes.Buffer, prefix string) {
-	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+	flushTableStyled(b, buf, prefix, nil)
+}
+
+// flushTableStyled dims the header row once alignment is settled. Styling whole
+// lines after the fact keeps escape bytes out of tabwriter's width arithmetic.
+func flushTableStyled(b *strings.Builder, buf *bytes.Buffer, prefix string, p glyphPalette) {
+	for i, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		line = strings.TrimRight(line, " ")
+		if i == 0 && p != nil {
+			line = p.Dim(line)
+		}
 		b.WriteString(prefix)
-		b.WriteString(strings.TrimRight(line, " "))
+		b.WriteString(line)
 		b.WriteByte('\n')
 	}
 }
@@ -56,7 +70,7 @@ func Summary(w io.Writer, rep *report.Report, opts Options) error {
 	g := glyphsFor(opts.ASCII)
 	var b strings.Builder
 
-	writeHeader(&b, rep, g)
+	writeHeader(&b, rep, g, opts.Color)
 	if rep.Overall.Requests == 0 {
 		writeEmpty(&b, rep)
 		_, err := io.WriteString(w, b.String())
@@ -64,9 +78,9 @@ func Summary(w io.Writer, rep *report.Report, opts Options) error {
 	}
 
 	b.WriteString("\n")
-	writeTokens(&b, rep)
+	writeTokens(&b, rep, opts)
 	b.WriteString("\n")
-	writeModels(&b, rep)
+	writeModels(&b, rep, opts)
 	b.WriteString("\n")
 	writeTotals(&b, rep, opts, g)
 	b.WriteString("\n")
@@ -76,14 +90,14 @@ func Summary(w io.Writer, rep *report.Report, opts Options) error {
 	return err
 }
 
-func writeHeader(b *strings.Builder, rep *report.Report, g glyphs) {
+func writeHeader(b *strings.Builder, rep *report.Report, g glyphs, p Palette) {
 	parts := []string{"Claude Code usage", DescribeWindow(rep.Window)}
 	if rep.Overall.Requests > 0 {
 		parts = append(parts, fmt.Sprintf("%s across %s",
 			Plural(rep.Overall.Sessions, "session", "sessions"),
 			Plural(rep.Overall.Projects, "project", "projects")))
 	}
-	fmt.Fprintf(b, "%s%s\n", indent, strings.Join(parts, " "+g.sep+" "))
+	fmt.Fprintf(b, "%s%s\n", indent, p.Dim(strings.Join(parts, " "+g.sep+" ")))
 }
 
 func writeEmpty(b *strings.Builder, rep *report.Report) {
@@ -99,7 +113,7 @@ func writeEmpty(b *strings.Builder, rep *report.Report) {
 
 // writeTokens renders the five billed classes. The cache-write classes stay
 // apart because they bill at different rates, and the 1-hour class dominates.
-func writeTokens(b *strings.Builder, rep *report.Report) {
+func writeTokens(b *strings.Builder, rep *report.Report, opts Options) {
 	t := rep.Overall.Tokens
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding, ' ', tabwriter.AlignRight)
@@ -111,10 +125,10 @@ func writeTokens(b *strings.Builder, rep *report.Report) {
 		"", Tokens(t.Input), Tokens(t.Output), Tokens(t.CacheWrite5m),
 		Tokens(t.CacheWrite1h), Tokens(t.CacheRead))
 	tw.Flush()
-	flushTable(b, &buf, "")
+	flushTableStyled(b, &buf, "", opts.Color)
 }
 
-func writeModels(b *strings.Builder, rep *report.Report) {
+func writeModels(b *strings.Builder, rep *report.Report, opts Options) {
 	width := len("Model")
 	for _, g := range rep.ByModel {
 		if len(g.Key) > width {
@@ -134,7 +148,7 @@ func writeModels(b *strings.Builder, rep *report.Report) {
 		fmt.Fprintf(tw, "%-*s\t%s\t%s\t\n", width, g.Key, Tokens(g.Tokens.Total()), cost)
 	}
 	tw.Flush()
-	flushTable(b, &buf, "")
+	flushTableStyled(b, &buf, "", opts.Color)
 }
 
 func writeTotals(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
@@ -201,7 +215,7 @@ func writeFootnotes(b *strings.Builder, rep *report.Report, opts Options, g glyp
 	}
 
 	for _, n := range notes {
-		writeNote(b, g, n)
+		writeNoteStyled(b, g, opts.Color, n)
 	}
 }
 

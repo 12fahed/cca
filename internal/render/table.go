@@ -14,6 +14,10 @@ import (
 // a common width first; right-aligning an already-full-width cell is a no-op,
 // which leaves the alignment flag acting on the numbers alone.
 type table struct {
+	// palette styles whole lines only. Colour is applied after tabwriter has
+	// flushed, because ANSI bytes inside a cell would be counted as width and
+	// would throw every column out of alignment.
+	palette glyphPalette
 	headers []string
 	// labels is how many leading columns are left-aligned.
 	labels int
@@ -25,6 +29,14 @@ type table struct {
 
 func newTable(labels int, headers ...string) *table {
 	return &table{headers: headers, labels: labels, rule: map[int]bool{}}
+}
+
+// glyphPalette is the subset of Palette a table needs.
+type glyphPalette interface{ Dim(string) string }
+
+func (t *table) withPalette(p glyphPalette) *table {
+	t.palette = p
+	return t
 }
 
 func (t *table) add(cells ...string) { t.rows = append(t.rows, cells) }
@@ -57,7 +69,7 @@ func (t *table) render(b *strings.Builder) {
 		fmt.Fprintln(tw, t.line(row, widths))
 	}
 	tw.Flush()
-	flushTable(b, &buf, "")
+	flushTableStyled(b, &buf, "", t.palette)
 }
 
 func (t *table) line(cells []string, widths []int) string {

@@ -24,7 +24,7 @@ func Models(w io.Writer, rep *report.Report, opts Options) error {
 				cost(g), share(g.Cost.Total, rep.Overall.Cost.Total))
 		}
 		addTotals(t, rep, "")
-		t.render(b)
+		t.withPalette(opts.Color).render(b)
 	})
 }
 
@@ -40,7 +40,7 @@ func Projects(w io.Writer, rep *report.Report, opts Options) error {
 		}
 		t.addTotal("Total", Count(int64(rep.Overall.Sessions)), Count(rep.Overall.Requests),
 			Tokens(rep.Overall.Tokens.Total()), USD(rep.Overall.Cost.Total), "")
-		t.render(b)
+		t.withPalette(opts.Color).render(b)
 	})
 }
 
@@ -54,7 +54,7 @@ func Daily(w io.Writer, rep *report.Report, opts Options) error {
 		}
 		t.addTotal("Total", Count(rep.Overall.Requests),
 			Tokens(rep.Overall.Tokens.Total()), USD(rep.Overall.Cost.Total))
-		t.render(b)
+		t.withPalette(opts.Color).render(b)
 	})
 }
 
@@ -77,7 +77,7 @@ func Sessions(w io.Writer, rep *report.Report, opts Options) error {
 			t.add(shortID(g.Key), started, shorten(g.Project, maxProjectWidth, opts.ASCII),
 				Count(g.Requests), Tokens(g.Tokens.Total()), cost(g))
 		}
-		t.render(b)
+		t.withPalette(opts.Color).render(b)
 	})
 }
 
@@ -87,8 +87,8 @@ func writeView(w io.Writer, rep *report.Report, opts Options, title string, body
 	g := glyphsFor(opts.ASCII)
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "%sClaude Code usage %s %s %s %s\n",
-		indent, g.sep, title, g.sep, DescribeWindow(rep.Window))
+	fmt.Fprintf(&b, "%s%s\n", indent, opts.Color.Dim(fmt.Sprintf(
+		"Claude Code usage %s %s %s %s", g.sep, title, g.sep, DescribeWindow(rep.Window))))
 	if rep.Overall.Requests == 0 {
 		writeEmpty(&b, rep)
 		_, err := io.WriteString(w, b.String())
@@ -98,9 +98,9 @@ func writeView(w io.Writer, rep *report.Report, opts Options, title string, body
 	b.WriteString("\n")
 	body(&b)
 	b.WriteString("\n")
-	writeNote(&b, g, costCaveat)
+	writeNoteStyled(&b, g, opts.Color, costCaveat)
 	if n := len(rep.UnknownModels); n > 0 {
-		writeNote(&b, g, fmt.Sprintf(
+		writeNoteStyled(&b, g, opts.Color, fmt.Sprintf(
 			"%s had no rate and %s left out of the cost column: %s.",
 			Plural(n, "model", "models"), pick(n, "was", "were"),
 			strings.Join(rep.UnknownModels, ", ")))
@@ -160,9 +160,29 @@ func glyphsFor(ascii bool) glyphs {
 }
 
 func writeNote(b *strings.Builder, g glyphs, note string) {
+	writeNoteStyled(b, g, Palette{}, note)
+}
+
+// writeNoteStyled dims a footnote. Notes sit outside any aligned column, so
+// escape bytes here cannot disturb a table's widths.
+func writeNoteStyled(b *strings.Builder, g glyphs, p Palette, note string) {
 	lines := strings.Split(note, "\n")
-	fmt.Fprintf(b, "%s%s %s\n", indent, g.bullet, lines[0])
+	fmt.Fprintf(b, "%s%s\n", indent, p.Dim(g.bullet+" "+lines[0]))
 	for _, l := range lines[1:] {
-		fmt.Fprintf(b, "%s  %s\n", indent, l)
+		fmt.Fprintf(b, "%s  %s\n", indent, p.Dim(l))
 	}
 }
+
+// flatten turns a wrapped note into a single line, for formats with no column
+// width to respect.
+func flatten(s string) string { return strings.ReplaceAll(s, "\n", " ") }
+
+// View names, used to pick the rows a machine-readable format emits.
+const (
+	ViewSummary  = "summary"
+	ViewModels   = "models"
+	ViewProjects = "projects"
+	ViewDaily    = "daily"
+	ViewSessions = "sessions"
+	ViewConfig   = "config"
+)
