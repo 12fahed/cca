@@ -17,7 +17,7 @@ GOENV := CGO_ENABLED=0
 
 PLATFORMS := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 
-.PHONY: all build test test-race lint fmt build-all clean
+.PHONY: all build test test-race test-all lint fmt build-all clean
 
 all: build
 
@@ -29,6 +29,10 @@ test:
 
 test-race:
 	go test -race ./...
+
+# Everything the CI would run: formatting, vet, build, tests, race.
+test-all:
+	go run test/run.go
 
 lint:
 	go vet ./...
