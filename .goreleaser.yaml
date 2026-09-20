@@ -1,0 +1,103 @@
+# GoReleaser configuration for cca.
+#
+# Validate with:  goreleaser check
+# Dry run with:   goreleaser release --snapshot --clean
+version: 2
+
+project_name: cca
+
+before:
+  hooks:
+    - go mod tidy
+    - go run test/run.go -short
+
+builds:
+  - id: cca
+    main: ./cmd/cca
+    binary: cca
+    # A static binary is a hard requirement: the shipped artifact has no runtime
+    # dependencies and must run on hosts without a matching libc.
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Five targets ship; Windows on ARM is not among them.
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: cca
+    ids: [cca]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    Download the archive for your platform above, or build from source:
+
+        git clone https://github.com/12fahed/cca.git
+        cd cca && make build
+
+    `go install` is not supported: the module path is `cca` rather than a
+    domain-qualified path, so it cannot be resolved remotely.
+
+# A Homebrew tap, ready to enable once a tap repository exists.
+#
+# Create github.com/12fahed/homebrew-tap, add a HOMEBREW_TAP_GITHUB_TOKEN secret
+# with contents:write on it, then uncomment.
+#
+# brews:
+#   - name: cca
+#     ids: [cca]
+#     repository:
+#       owner: 12fahed
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+#     directory: Formula
+#     homepage: https://github.com/12fahed/cca
+#     description: Analyze local Claude Code token usage, cost, and water footprint
+#     license: MIT
+#     test: |
+#       system "#{bin}/cca", "version"
