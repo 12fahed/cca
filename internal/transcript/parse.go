@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// Record types cca recognises. Everything else is skipped.
+const (
+	typeAssistant = "assistant"
+	typeCostState = "cost-state"
+)
+
+// unmarshal is json.Unmarshal, named so the cost-state decoder reads the same
+// way as the record decoder.
+func unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
+
 // maxLineBytes caps a single record. Transcript lines carry whole tool results
 // and can reach megabytes, so the limit is generous; anything past it is
 // skipped rather than allowed to abort the file.
@@ -103,10 +113,11 @@ type Options struct {
 }
 
 type Parser struct {
-	opts      Options
-	nonModels map[string]bool
-	seen      map[string]struct{}
-	stats     Stats
+	opts       Options
+	nonModels  map[string]bool
+	seen       map[string]struct{}
+	stats      Stats
+	costStates map[string]CostState
 }
 
 func New(opts Options) *Parser {
@@ -115,10 +126,11 @@ func New(opts Options) *Parser {
 		nm[m] = true
 	}
 	return &Parser{
-		opts:      opts,
-		nonModels: nm,
-		seen:      make(map[string]struct{}),
-		stats:     Stats{Skipped: make(map[string]int64)},
+		opts:       opts,
+		nonModels:  nm,
+		seen:       make(map[string]struct{}),
+		stats:      Stats{Skipped: make(map[string]int64)},
+		costStates: make(map[string]CostState),
 	}
 }
 
@@ -199,7 +211,10 @@ func (p *Parser) parseLine(line []byte, project string) (Record, bool) {
 		p.skip(SkipMalformed)
 		return Record{}, false
 	}
-	if raw.Type != "assistant" {
+	if raw.Type != typeAssistant {
+		if raw.Type == typeCostState {
+			p.recordCostState(line)
+		}
 		p.skip(SkipNotAssistant)
 		return Record{}, false
 	}
