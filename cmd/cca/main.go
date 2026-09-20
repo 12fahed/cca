@@ -34,8 +34,6 @@ const (
 	exitUsage = 2
 )
 
-var errNotImplemented = errors.New("not implemented yet")
-
 type options struct {
 	since        string
 	until        string
@@ -151,15 +149,15 @@ type command struct {
 }
 
 var commands = []command{
-	{"summary", "all-time usage summary (default)", runSummary},
-	{"today", "usage since local midnight", notImplemented},
-	{"week", "usage over the last 7 days", notImplemented},
-	{"month", "usage over the last 30 days", notImplemented},
-	{"models", "breakdown by model", notImplemented},
-	{"projects", "breakdown by project directory", notImplemented},
-	{"daily", "per-day table, newest last", notImplemented},
-	{"sessions", "most expensive sessions", notImplemented},
-	{"config", "show resolved config and file paths", notImplemented},
+	{"summary", "all-time usage summary (default)", view("", render.Summary)},
+	{"today", "usage since local midnight", view(report.SpecToday, render.Summary)},
+	{"week", "usage over the last 7 days", view(report.SpecWeek, render.Summary)},
+	{"month", "usage over the last month", view(report.SpecMonth, render.Summary)},
+	{"models", "breakdown by model", view("", render.Models)},
+	{"projects", "breakdown by project directory", view("", render.Projects)},
+	{"daily", "per-day table, newest last", view("", render.Daily)},
+	{"sessions", "most expensive sessions", runSessions},
+	{"config", "show resolved config and file paths", runConfig},
 	{"version", "version, commit, and build date", runVersion},
 	{"help", "show this help", nil},
 }
@@ -209,16 +207,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	switch err := cmd.run(opts, stdout); {
-	case err == nil:
-		return exitOK
-	case errors.Is(err, errNotImplemented):
-		fmt.Fprintf(stderr, "cca: %q is not implemented yet\n", name)
-		return exitError
-	default:
+	if err := cmd.run(opts, stdout); err != nil {
 		fmt.Fprintf(stderr, "cca: %v\n", err)
 		return exitError
 	}
+	return exitOK
 }
 
 func lookup(name string) *command {
@@ -237,13 +230,22 @@ func usageExit(err error) int {
 	return exitUsage
 }
 
-func notImplemented(*options, io.Writer) error { return errNotImplemented }
+// viewFunc renders a built report.
+type viewFunc func(io.Writer, *report.Report, render.Options) error
 
-// runSummary is the wiring for the default view: discover transcripts, price
-// them, aggregate, and render. The logic lives in the internal packages; this
-// only connects them.
-func runSummary(o *options, out io.Writer) error {
+// runView is the shared pipeline behind every usage command: resolve settings,
+// discover transcripts, price them, aggregate, render. The logic lives in the
+// internal packages; this only connects them.
+//
+// spec names a preset window for the bare today/week/month commands and is
+// empty when the window comes from --since and --until.
+func runView(o *options, out io.Writer, spec string, view viewFunc, topSessions int) error {
 	cfg, err := o.resolve()
+	if err != nil {
+		return err
+	}
+
+	window, err := o.window(spec)
 	if err != nil {
 		return err
 	}
@@ -259,28 +261,78 @@ func runSummary(o *options, out io.Writer) error {
 		ExcludeSidechains: cfg.NoSidechains,
 	})
 	if err != nil {
-		if errors.Is(err, transcript.ErrNoClaudeDir) {
-			return fmt.Errorf("%w\nIf Claude Code stores its data elsewhere, "+
-				"point cca at it with --claude-dir", err)
-		}
-		return err
-	}
-
-	window, err := report.ParseWindow(o.since, o.until, time.Now())
-	if err != nil {
-		return err
+		return explainLoad(err, cfg.ClaudeDir)
 	}
 
 	rep := report.Build(records, pricing.NewCalculator(table), report.Options{
 		Window:      window,
-		TopSessions: o.top,
+		TopSessions: topSessions,
 		Stats:       stats,
 	})
 
-	return render.Summary(out, rep, render.Options{
+	ropts := render.Options{
 		ASCII: cfg.ASCII,
 		Water: water.For(rep.Overall.Tokens.Total(), cfg.WaterMLPer1k),
-	})
+	}
+	if err := view(out, rep, ropts); err != nil {
+		return err
+	}
+	if o.verbose {
+		return render.Diagnostics(out, rep, ropts)
+	}
+	return nil
+}
+
+// window resolves the time range, refusing a combination that cannot be
+// honoured rather than silently picking one side.
+func (o *options) window(spec string) (report.Window, error) {
+	now := time.Now()
+	if spec == "" {
+		return report.ParseWindow(o.since, o.until, now)
+	}
+	if o.since != "" || o.until != "" {
+		return report.Window{}, fmt.Errorf(
+			"this command already sets its own time range; drop --since/--until " +
+				"or use the default view with them instead")
+	}
+	return report.Relative(spec, now)
+}
+
+// explainLoad turns a discovery failure into something actionable. A missing
+// directory is a normal situation for a new user, not a malfunction.
+func explainLoad(err error, dir string) error {
+	if !errors.Is(err, transcript.ErrNoClaudeDir) {
+		return err
+	}
+	if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+		return fmt.Errorf("%s exists but holds no transcripts yet.\n"+
+			"Run Claude Code at least once, or point cca elsewhere with --claude-dir", dir)
+	}
+	return fmt.Errorf("%w\nIf Claude Code stores its data elsewhere, "+
+		"point cca at it with --claude-dir", err)
+}
+
+// view builds a command handler for one of the report views.
+func view(spec string, f viewFunc) func(*options, io.Writer) error {
+	return func(o *options, out io.Writer) error { return runView(o, out, spec, f, 0) }
+}
+
+func runSessions(o *options, out io.Writer) error {
+	return runView(o, out, "", render.Sessions, o.top)
+}
+
+// runConfig reports the resolved settings without touching any transcripts, so
+// it still works when the Claude directory is missing.
+func runConfig(o *options, out io.Writer) error {
+	cfg, err := o.resolve()
+	if err != nil {
+		return err
+	}
+	origin := "embedded default"
+	if table, err := pricing.LoadWithFallback(cfg.PricingPath); err == nil && cfg.PricingPath != "" {
+		origin = "override (" + table.VerifiedOn + ")"
+	}
+	return render.Config(out, cfg, origin, render.Options{ASCII: cfg.ASCII})
 }
 
 func runVersion(_ *options, out io.Writer) error {

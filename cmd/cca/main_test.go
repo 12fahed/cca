@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunExitCodes(t *testing.T) {
@@ -21,7 +22,6 @@ func TestRunExitCodes(t *testing.T) {
 		{"help", []string{"help"}, exitOK},
 		{"flag before command", []string{"--json", "version"}, exitOK},
 		{"flag after command", []string{"version", "--json"}, exitOK},
-		{"not implemented", []string{"models"}, exitError},
 		{"unknown command", []string{"bogus"}, exitUsage},
 		{"unknown flag", []string{"--nope"}, exitUsage},
 		{"extra argument", []string{"version", "extra"}, exitUsage},
@@ -48,8 +48,10 @@ func fixtureDir(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Dated now, so that the today, week, and month windows all include it.
+	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	line := `{"type":"assistant","uuid":"u1","sessionId":"s1","requestId":"r1",` +
-		`"timestamp":"2026-09-14T10:00:00.000Z","cwd":"/demo","isSidechain":false,` +
+		`"timestamp":"` + stamp + `","cwd":"/demo","isSidechain":false,` +
 		`"message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":1000,` +
 		`"output_tokens":2000,"cache_creation_input_tokens":0,"cache_read_input_tokens":5000,` +
 		`"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}`
@@ -294,5 +296,154 @@ func TestPricingOverrideDiscoveredFromConfigDir(t *testing.T) {
 	// 8000 tokens at $1000/M is $8.00; the embedded table would give cents.
 	if !strings.Contains(out, "$8.00") {
 		t.Errorf("pricing override in the config dir was not picked up:\n%s", out)
+	}
+}
+
+func TestEverySubcommandRuns(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+	tests := map[string][]string{
+		"summary":  {"summary"},
+		"today":    {"today"},
+		"week":     {"week"},
+		"month":    {"month"},
+		"models":   {"models"},
+		"projects": {"projects"},
+		"daily":    {"daily"},
+		"sessions": {"sessions"},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			out := runSummaryOutput(t, append([]string{"--claude-dir", dir}, args...)...)
+			if !strings.Contains(out, "Claude Code usage") {
+				t.Errorf("%s produced no recognisable output:\n%s", name, out)
+			}
+			// Every view prints dollars, so every view owes the caveat.
+			if !strings.Contains(out, "not what you were billed") {
+				t.Errorf("%s is missing the cost-basis caveat", name)
+			}
+		})
+	}
+}
+
+// Every command in the help listing must actually be runnable; a listed command
+// that errors is worse than one that is absent.
+func TestHelpListsOnlyWorkingCommands(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+	for _, c := range commands {
+		if c.run == nil { // help is handled before dispatch
+			continue
+		}
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run([]string{"--claude-dir", dir, c.name}, &stdout, &stderr); code != exitOK {
+				t.Errorf("%s exited %d: %s", c.name, code, stderr.String())
+			}
+			if stdout.Len() == 0 {
+				t.Errorf("%s produced no output", c.name)
+			}
+		})
+	}
+}
+
+func TestConfigCommandShowsResolvedValuesAndSources(t *testing.T) {
+	dir := isolateConfig(t)
+	writeUserConfig(t, dir, `{"water_ml_per_1k_tokens": 0.9}`)
+
+	out := runSummaryOutput(t, "config")
+	for _, want := range []string{
+		"water_ml_per_1k_tokens", "0.90 mL / 1k tokens", "config file",
+		"claude_dir", "default", filepath.Join(dir, "config.json"), "found",
+		"placeholder",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config view missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// The config view must work even with no Claude directory, since explaining the
+// configuration is exactly what a user needs when nothing else works.
+func TestConfigCommandWorksWithoutTranscripts(t *testing.T) {
+	isolateConfig(t)
+	out := runSummaryOutput(t, "config", "--claude-dir", filepath.Join(t.TempDir(), "absent"))
+	if !strings.Contains(out, "resolved configuration") {
+		t.Errorf("config should still render:\n%s", out)
+	}
+}
+
+func TestSessionsTopLimitsRows(t *testing.T) {
+	isolateConfig(t)
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t), "sessions", "--top", "1")
+	if !strings.Contains(out, "by session") {
+		t.Errorf("sessions view did not render:\n%s", out)
+	}
+}
+
+func TestVerboseAddsDiagnostics(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+	plain := runSummaryOutput(t, "--claude-dir", dir)
+	verbose := runSummaryOutput(t, "--claude-dir", dir, "--verbose")
+
+	if strings.Contains(plain, "duplicates dropped") {
+		t.Error("diagnostics should not appear without --verbose")
+	}
+	for _, want := range []string{"Scan", "usage records kept", "duplicates dropped"} {
+		if !strings.Contains(verbose, want) {
+			t.Errorf("--verbose output missing %q:\n%s", want, verbose)
+		}
+	}
+}
+
+// A preset window and an explicit one cannot both be honoured, so the conflict
+// is refused rather than silently resolved.
+func TestPresetWindowRejectsExplicitRange(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+	for _, args := range [][]string{
+		{"today", "--since", "7d"},
+		{"week", "--until", "2026-09-14"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := run(append([]string{"--claude-dir", dir}, args...), &stdout, &stderr)
+		if code != exitError {
+			t.Errorf("%v exited %d, want %d", args, code, exitError)
+		}
+		if !strings.Contains(stderr.String(), "time range") {
+			t.Errorf("%v: unhelpful error %q", args, stderr.String())
+		}
+	}
+}
+
+// An existing Claude directory with no transcripts is a normal state for a new
+// user and deserves a different message from one that is absent entirely.
+func TestEmptyClaudeDirIsDistinguishedFromMissing(t *testing.T) {
+	isolateConfig(t)
+	empty := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", empty}, &stdout, &stderr); code != exitError {
+		t.Fatalf("exit = %d", code)
+	}
+	if !strings.Contains(stderr.String(), "holds no transcripts yet") {
+		t.Errorf("an empty directory should say so, got: %s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "not found") {
+		t.Error("an existing directory should not be reported as missing")
+	}
+}
+
+// A projects directory that exists but is empty is not an error at all.
+func TestEmptyProjectsDirRendersPlainly(t *testing.T) {
+	isolateConfig(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := runSummaryOutput(t, "--claude-dir", root)
+	if !strings.Contains(out, "No usage found") {
+		t.Errorf("want a plain message, got:\n%s", out)
 	}
 }
