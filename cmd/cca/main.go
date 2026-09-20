@@ -149,13 +149,13 @@ type command struct {
 }
 
 var commands = []command{
-	{"summary", "all-time usage summary (default)", view("", render.Summary)},
-	{"today", "usage since local midnight", view(report.SpecToday, render.Summary)},
-	{"week", "usage over the last 7 days", view(report.SpecWeek, render.Summary)},
-	{"month", "usage over the last month", view(report.SpecMonth, render.Summary)},
-	{"models", "breakdown by model", view("", render.Models)},
-	{"projects", "breakdown by project directory", view("", render.Projects)},
-	{"daily", "per-day table, newest last", view("", render.Daily)},
+	{"summary", "all-time usage summary (default)", view("", render.ViewSummary, render.Summary)},
+	{"today", "usage since local midnight", view(report.SpecToday, render.ViewSummary, render.Summary)},
+	{"week", "usage over the last 7 days", view(report.SpecWeek, render.ViewSummary, render.Summary)},
+	{"month", "usage over the last month", view(report.SpecMonth, render.ViewSummary, render.Summary)},
+	{"models", "breakdown by model", view("", render.ViewModels, render.Models)},
+	{"projects", "breakdown by project directory", view("", render.ViewProjects, render.Projects)},
+	{"daily", "per-day table, newest last", view("", render.ViewDaily, render.Daily)},
 	{"sessions", "most expensive sessions", runSessions},
 	{"config", "show resolved config and file paths", runConfig},
 	{"version", "version, commit, and build date", runVersion},
@@ -239,7 +239,7 @@ type viewFunc func(io.Writer, *report.Report, render.Options) error
 //
 // spec names a preset window for the bare today/week/month commands and is
 // empty when the window comes from --since and --until.
-func runView(o *options, out io.Writer, spec string, view viewFunc, topSessions int) error {
+func runView(o *options, out io.Writer, spec, name string, view viewFunc, topSessions int) error {
 	cfg, err := o.resolve()
 	if err != nil {
 		return err
@@ -273,7 +273,18 @@ func runView(o *options, out io.Writer, spec string, view viewFunc, topSessions 
 	ropts := render.Options{
 		ASCII: cfg.ASCII,
 		Water: water.For(rep.Overall.Tokens.Total(), cfg.WaterMLPer1k),
+		View:  name,
+		Color: render.NewPalette(render.ColorOptions{Out: out, Disabled: cfg.NoColor}),
 	}
+
+	switch {
+	case o.json:
+		// Machine-readable output is never styled or abbreviated.
+		return render.JSON(out, rep, ropts)
+	case o.csv:
+		return render.CSV(out, rep, ropts)
+	}
+
 	if err := view(out, rep, ropts); err != nil {
 		return err
 	}
@@ -313,12 +324,12 @@ func explainLoad(err error, dir string) error {
 }
 
 // view builds a command handler for one of the report views.
-func view(spec string, f viewFunc) func(*options, io.Writer) error {
-	return func(o *options, out io.Writer) error { return runView(o, out, spec, f, 0) }
+func view(spec, name string, f viewFunc) func(*options, io.Writer) error {
+	return func(o *options, out io.Writer) error { return runView(o, out, spec, name, f, 0) }
 }
 
 func runSessions(o *options, out io.Writer) error {
-	return runView(o, out, "", render.Sessions, o.top)
+	return runView(o, out, "", render.ViewSessions, render.Sessions, o.top)
 }
 
 // runConfig reports the resolved settings without touching any transcripts, so
@@ -332,7 +343,11 @@ func runConfig(o *options, out io.Writer) error {
 	if table, err := pricing.LoadWithFallback(cfg.PricingPath); err == nil && cfg.PricingPath != "" {
 		origin = "override (" + table.VerifiedOn + ")"
 	}
-	return render.Config(out, cfg, origin, render.Options{ASCII: cfg.ASCII})
+	return render.Config(out, cfg, origin, render.Options{
+		ASCII: cfg.ASCII,
+		View:  render.ViewConfig,
+		Color: render.NewPalette(render.ColorOptions{Out: out, Disabled: cfg.NoColor}),
+	})
 }
 
 func runVersion(_ *options, out io.Writer) error {

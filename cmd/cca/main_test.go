@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -445,5 +448,93 @@ func TestEmptyProjectsDirRendersPlainly(t *testing.T) {
 	out := runSummaryOutput(t, "--claude-dir", root)
 	if !strings.Contains(out, "No usage found") {
 		t.Errorf("want a plain message, got:\n%s", out)
+	}
+}
+
+// The --json and --csv paths must work for every view, not just the default.
+func TestMachineFormatsForEveryView(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+	for _, name := range []string{"summary", "models", "projects", "daily", "sessions"} {
+		t.Run(name+"/json", func(t *testing.T) {
+			out := runSummaryOutput(t, "--claude-dir", dir, name, "--json")
+			var doc map[string]any
+			if err := json.Unmarshal([]byte(out), &doc); err != nil {
+				t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+			}
+			if doc["view"] != name {
+				t.Errorf("view = %v, want %q", doc["view"], name)
+			}
+		})
+		t.Run(name+"/csv", func(t *testing.T) {
+			out := runSummaryOutput(t, "--claude-dir", dir, name, "--csv")
+			rows, err := csv.NewReader(strings.NewReader(out)).ReadAll()
+			if err != nil {
+				t.Fatalf("output is not valid CSV: %v\n%s", err, out)
+			}
+			if len(rows) < 2 {
+				t.Errorf("want a header and at least one row, got %d", len(rows))
+			}
+		})
+	}
+}
+
+// The definition-of-done item, checked through the CLI rather than the packages:
+// the table and --json must report the same cost.
+func TestCLIJSONAndTableAgreeOnCost(t *testing.T) {
+	isolateConfig(t)
+	dir := fixtureDir(t)
+
+	var doc struct {
+		Totals struct {
+			Cost struct {
+				Total float64 `json:"total"`
+			} `json:"cost_usd"`
+			Tokens struct {
+				Total int64 `json:"total"`
+			} `json:"tokens"`
+		} `json:"totals"`
+	}
+	if err := json.Unmarshal([]byte(runSummaryOutput(t, "--claude-dir", dir, "--json")), &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	table := runSummaryOutput(t, "--claude-dir", dir)
+	wantCost := fmt.Sprintf("$%.2f", doc.Totals.Cost.Total)
+	if !strings.Contains(table, wantCost) {
+		t.Errorf("table does not show the JSON cost %s:\n%s", wantCost, table)
+	}
+	if doc.Totals.Tokens.Total == 0 {
+		t.Error("fixture produced no tokens, so the comparison proves nothing")
+	}
+}
+
+func TestJSONAndCSVAreMutuallyExclusive(t *testing.T) {
+	isolateConfig(t)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--claude-dir", fixtureDir(t), "--json", "--csv"}, &stdout, &stderr)
+	if code != exitUsage {
+		t.Fatalf("exit = %d, want %d", code, exitUsage)
+	}
+}
+
+// Writing to a buffer rather than a terminal must never produce escapes,
+// whatever the environment says.
+func TestOutputToAPipeIsNeverStyled(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("TERM", "xterm-256color")
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t))
+	if strings.Contains(out, "\x1b[") {
+		t.Error("output captured from a pipe contains ANSI escapes")
+	}
+}
+
+func TestNoColorEnvIsHonouredEndToEnd(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	out := runSummaryOutput(t, "--claude-dir", fixtureDir(t))
+	if strings.Contains(out, "\x1b[") {
+		t.Error("NO_COLOR must win over CLICOLOR_FORCE")
 	}
 }
