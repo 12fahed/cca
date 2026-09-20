@@ -1,0 +1,6 @@
+# Normalise line endings so that gofmt and the golden files behave identically
+# on every platform. Without this a Windows checkout rewrites Go sources to CRLF
+# and `gofmt -l` reports the whole tree as unformatted.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
