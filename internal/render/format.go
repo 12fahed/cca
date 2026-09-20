@@ -51,14 +51,17 @@ func USD(v float64) string {
 	case v < 0.01 && v > -0.01:
 		return fmt.Sprintf("$%.4f", v)
 	}
-	// Thousands separators: totals run into four figures on a real corpus, and
-	// an unbroken run of digits is hard to read at a glance.
-	whole, frac := math.Modf(math.Abs(v))
+	// Rounding to whole cents first, rather than splitting the float and
+	// rounding the fraction, so that a fraction rounding up to 100 carries into
+	// the dollars instead of printing as $111.100.
+	cents := int64(math.Round(math.Abs(v) * 100))
 	sign := ""
 	if v < 0 {
 		sign = "-"
 	}
-	return fmt.Sprintf("%s$%s.%02d", sign, Count(int64(whole)), int(math.Round(frac*100)))
+	// Thousands separators: totals run into four figures on a real corpus, and
+	// an unbroken run of digits is hard to read at a glance.
+	return fmt.Sprintf("%s$%s.%02d", sign, Count(cents/100), cents%100)
 }
 
 // Count renders an exact integer with thousands separators, for the small

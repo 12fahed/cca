@@ -23,7 +23,12 @@ func TestUSD(t *testing.T) {
 	tests := map[float64]string{
 		0: "$0.00", 211.46: "$211.46", 1259.129: "$1,259.13",
 		1_262_370.5: "$1,262,370.50", -1234.5: "-$1,234.50",
-		0.42: "$0.42",
+		// A fraction that rounds up to a full 100 cents must carry into the
+		// dollars rather than printing as $111.100.
+		111.9995: "$112.00",
+		9.999:    "$10.00",
+		0.999:    "$1.00",
+		0.42:     "$0.42",
 		// A tiny but non-zero spend must not read as nothing.
 		0.0004: "$0.0004",
 		0.009:  "$0.0090",

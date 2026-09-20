@@ -53,10 +53,7 @@ func flushTable(b *strings.Builder, buf *bytes.Buffer, prefix string) {
 
 // Summary writes the default one-screen view.
 func Summary(w io.Writer, rep *report.Report, opts Options) error {
-	g := unicodeGlyphs
-	if opts.ASCII {
-		g = asciiGlyphs
-	}
+	g := glyphsFor(opts.ASCII)
 	var b strings.Builder
 
 	writeHeader(&b, rep, g)
@@ -157,8 +154,7 @@ func writeTotals(b *strings.Builder, rep *report.Report, opts Options, g glyphs)
 // own accuracy and are never suppressed.
 func writeFootnotes(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
 	notes := []string{
-		"Cost is what this usage would cost at API rates, not what you were billed;\n" +
-			"Claude Code on a subscription draws from your plan allowance instead.",
+		costCaveat,
 		"Water " + opts.Water.Assumption() + ". See README.",
 	}
 
@@ -205,11 +201,7 @@ func writeFootnotes(b *strings.Builder, rep *report.Report, opts Options, g glyp
 	}
 
 	for _, n := range notes {
-		lines := strings.Split(n, "\n")
-		fmt.Fprintf(b, "%s%s %s\n", indent, g.bullet, lines[0])
-		for _, l := range lines[1:] {
-			fmt.Fprintf(b, "%s  %s\n", indent, l)
-		}
+		writeNote(b, g, n)
 	}
 }
 

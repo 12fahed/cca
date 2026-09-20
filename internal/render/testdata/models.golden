@@ -1,0 +1,11 @@
+  Claude Code usage · by model · all time
+
+  Model                      requests  tokens     cost  share
+  claude-opus-5                     2  327.6M  $472.57  79.9%
+  claude-sonnet-5                   1  137.6M  $117.39  19.9%
+  claude-haiku-4-5-20251001         1    3.3M    $1.32   0.2%
+
+  Total                             4  468.5M  $591.28
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.

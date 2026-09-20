@@ -1,0 +1,10 @@
+  Claude Code usage · by project · all time
+
+  Project                             sessions  requests  tokens     cost  share
+  api-server                                 2         3  330.9M  $473.89  80.1%
+  …ified-project-directory-name-here         1         1  137.6M  $117.39  19.9%
+
+  Total                                      3         4  468.5M  $591.28
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
