@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,7 +20,6 @@ func TestRunExitCodes(t *testing.T) {
 		{"help", []string{"help"}, exitOK},
 		{"flag before command", []string{"--json", "version"}, exitOK},
 		{"flag after command", []string{"version", "--json"}, exitOK},
-		{"default command", nil, exitError},
 		{"not implemented", []string{"models"}, exitError},
 		{"unknown command", []string{"bogus"}, exitUsage},
 		{"unknown flag", []string{"--nope"}, exitUsage},
@@ -33,6 +34,90 @@ func TestRunExitCodes(t *testing.T) {
 					tt.args, got, tt.want, stderr.String())
 			}
 		})
+	}
+}
+
+// fixtureDir writes a minimal claude directory so that command tests never
+// read the real one: the user's own transcripts would make results depend on
+// the machine, and the suite must not touch them at all.
+func fixtureDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"type":"assistant","uuid":"u1","sessionId":"s1","requestId":"r1",` +
+		`"timestamp":"2026-09-14T10:00:00.000Z","cwd":"/demo","isSidechain":false,` +
+		`"message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":1000,` +
+		`"output_tokens":2000,"cache_creation_input_tokens":0,"cache_read_input_tokens":5000,` +
+		`"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}`
+	if err := os.WriteFile(filepath.Join(dir, "s1.jsonl"), []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestDefaultCommandRendersSummary(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", fixtureDir(t)}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("bare cca exited %d: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Claude Code usage", "Tokens", "claude-opus-5", "Cost", "Water",
+		// Both accuracy caveats are mandatory on the default view.
+		"not what you were billed", "rough estimate",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSummaryFlagsAreHonoured(t *testing.T) {
+	dir := fixtureDir(t)
+
+	var ascii bytes.Buffer
+	if code := run([]string{"--claude-dir", dir, "--ascii"}, &ascii, &bytes.Buffer{}); code != exitOK {
+		t.Fatalf("--ascii exited %d", code)
+	}
+	for _, glyph := range []string{"·", "≈", "─"} {
+		if strings.Contains(ascii.String(), glyph) {
+			t.Errorf("--ascii output still contains %q", glyph)
+		}
+	}
+
+	var water bytes.Buffer
+	if code := run([]string{"--claude-dir", dir, "--water-ml-per-1k", "1.5"}, &water, &bytes.Buffer{}); code != exitOK {
+		t.Fatalf("--water-ml-per-1k exited %d", code)
+	}
+	if !strings.Contains(water.String(), "1.50 mL / 1k tokens") {
+		t.Errorf("the water footnote should state the overridden rate:\n%s", water.String())
+	}
+}
+
+func TestMissingClaudeDirIsExplained(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--claude-dir", filepath.Join(t.TempDir(), "absent")}, &stdout, &stderr)
+	if code != exitError {
+		t.Fatalf("exit = %d, want %d", code, exitError)
+	}
+	// A missing directory is a normal situation, so it earns an explanation
+	// rather than a bare error.
+	if !strings.Contains(stderr.String(), "--claude-dir") {
+		t.Errorf("error should suggest how to fix it, got: %s", stderr.String())
+	}
+}
+
+func TestBadWindowIsRejected(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--claude-dir", fixtureDir(t), "--since", "yesterday"}, &stdout, &stderr)
+	if code != exitError {
+		t.Fatalf("exit = %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr.String(), "--since") {
+		t.Errorf("error should name the offending flag, got: %s", stderr.String())
 	}
 }
 

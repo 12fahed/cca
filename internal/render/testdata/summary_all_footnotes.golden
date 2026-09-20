@@ -1,0 +1,26 @@
+  Claude Code usage · all time · 2 sessions across 1 project
+
+  Tokens  input  output  cache 5m  cache 1h  cache read
+           4.5K  126.0K     10.0K      1.1M        5.8M
+
+  Model               tokens      cost
+  claude-opus-5         6.4M    $17.29
+  claude-sonnet-5     600.4K     $0.53
+  claude-imaginary-9  126.0K  unpriced
+
+  Cost    $17.82    at API list prices
+  Water   ≈ 2.1 L   about 4 bottles of water
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
+  ─ 1 model had no rate and was excluded from the cost total: claude-imaginary-9.
+    Add it to pricing.json to price it.
+  ─ 3 records carried no cache-write TTL split; those writes were billed as
+    5-minute writes, which understates any that were really 1-hour writes.
+  ─ 1 request used fast mode, which bills at roughly double the standard rate.
+  ─ 1 request pinned inference to the US, which adds 10% to every token class.
+  ─ 1 request ran on the batch tier at half the standard rate.
+  ─ Includes 12 web searches. Failed searches are not billed but are
+    indistinguishable here, so that charge is an upper bound.
+  ─ 1 record had no usable timestamp and is counted in the totals but not by day.

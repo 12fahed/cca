@@ -1,0 +1,16 @@
+  Claude Code usage - all time - 3 sessions across 2 projects
+
+  Tokens  input  output  cache 5m  cache 1h  cache read
+          41.2K    2.9M      2.2M     47.9M      415.5M
+
+  Model                      tokens     cost
+  claude-opus-5              327.6M  $472.57
+  claude-sonnet-5            137.6M  $117.39
+  claude-haiku-4-5-20251001    3.3M    $1.32
+
+  Cost    $591.28     at API list prices
+  Water   ~ 140.5 L   about 3 loads of laundry
+
+  - Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+  - Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.

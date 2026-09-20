@@ -125,6 +125,9 @@ type Options struct {
 	Location *time.Location
 	// TopSessions caps BySession. Zero keeps every session.
 	TopSessions int
+	// Stats is carried through to the report so the renderer can footnote
+	// parse-level facts such as a cache-write fallback having been used.
+	Stats transcript.Stats
 }
 
 // Report is the aggregated view of a run, ready for rendering.
@@ -150,6 +153,12 @@ type Report struct {
 	// Filtered counts records excluded by the window.
 	Filtered int64
 
+	// Counts behind the conditional footnotes. Each marks a priced condition
+	// that changed the arithmetic and that the reader deserves to be told about.
+	FastRequests  int64
+	USGeoRequests int64
+	BatchRequests int64
+
 	UnknownModels []string
 	Warnings      []pricing.Warning
 	Stats         transcript.Stats
@@ -162,7 +171,7 @@ func Build(recs []transcript.Record, calc *pricing.Calculator, opts Options) *Re
 	if loc == nil {
 		loc = time.Local
 	}
-	rep := &Report{Window: opts.Window, Location: loc.String()}
+	rep := &Report{Window: opts.Window, Location: loc.String(), Stats: opts.Stats}
 
 	byModel := map[string]*Group{}
 	byProject := map[string]*Group{}
@@ -188,6 +197,16 @@ func Build(recs []transcript.Record, calc *pricing.Calculator, opts Options) *Re
 				WebSearches:  r.Usage.WebSearches,
 			},
 		})
+
+		if cost.Fast {
+			rep.FastRequests++
+		}
+		if r.InferenceGeo == pricing.GeoUS {
+			rep.USGeoRequests++
+		}
+		if r.ServiceTier == pricing.TierBatch {
+			rep.BatchRequests++
+		}
 
 		rep.Overall.observe(r, cost)
 		if r.IsSidechain {

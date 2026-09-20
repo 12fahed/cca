@@ -11,6 +11,14 @@ import (
 	"runtime"
 	"strconv"
 	"text/tabwriter"
+	"time"
+
+	"cca/internal/config"
+	"cca/internal/pricing"
+	"cca/internal/render"
+	"cca/internal/report"
+	"cca/internal/transcript"
+	"cca/internal/water"
 )
 
 // Injected at build time via -ldflags -X; see the Makefile.
@@ -91,7 +99,7 @@ type command struct {
 }
 
 var commands = []command{
-	{"summary", "all-time usage summary (default)", notImplemented},
+	{"summary", "all-time usage summary (default)", runSummary},
 	{"today", "usage since local midnight", notImplemented},
 	{"week", "usage over the last 7 days", notImplemented},
 	{"month", "usage over the last 30 days", notImplemented},
@@ -176,6 +184,57 @@ func usageExit(err error) int {
 }
 
 func notImplemented(*options, io.Writer) error { return errNotImplemented }
+
+// runSummary is the wiring for the default view: discover transcripts, price
+// them, aggregate, and render. The logic lives in the internal packages; this
+// only connects them.
+func runSummary(o *options, out io.Writer) error {
+	table, err := pricing.LoadWithFallback(o.pricingPath)
+	if err != nil {
+		return err
+	}
+
+	dir := o.claudeDir
+	if dir == "" {
+		if dir, err = config.DefaultClaudeDir(); err != nil {
+			return fmt.Errorf("locate the Claude directory: %w", err)
+		}
+	}
+
+	records, stats, err := transcript.Load(transcript.Options{
+		ClaudeDir:         dir,
+		NonModels:         table.NonModelSet(),
+		ExcludeSidechains: o.noSidechains,
+	})
+	if err != nil {
+		if errors.Is(err, transcript.ErrNoClaudeDir) {
+			return fmt.Errorf("%w\nIf Claude Code stores its data elsewhere, "+
+				"point cca at it with --claude-dir", err)
+		}
+		return err
+	}
+
+	window, err := report.ParseWindow(o.since, o.until, time.Now())
+	if err != nil {
+		return err
+	}
+
+	rep := report.Build(records, pricing.NewCalculator(table), report.Options{
+		Window:      window,
+		TopSessions: o.top,
+		Stats:       stats,
+	})
+
+	ml := water.DefaultMLPer1kTokens
+	if o.waterMLPer1k.set {
+		ml = o.waterMLPer1k.value
+	}
+
+	return render.Summary(out, rep, render.Options{
+		ASCII: o.ascii,
+		Water: water.For(rep.Overall.Tokens.Total(), ml),
+	})
+}
 
 func runVersion(_ *options, out io.Writer) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)

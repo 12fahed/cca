@@ -1,0 +1,242 @@
+package render
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"cca/internal/report"
+	"cca/internal/water"
+)
+
+// glyphs holds the few non-ASCII characters the table uses, with plain
+// substitutes for terminals that mangle them.
+type glyphs struct {
+	sep    string // between header segments
+	approx string // before the water figure
+	bullet string // in front of a footnote
+}
+
+var (
+	unicodeGlyphs = glyphs{sep: "·", approx: "≈", bullet: "─"}
+	asciiGlyphs   = glyphs{sep: "-", approx: "~", bullet: "-"}
+)
+
+// Options controls how a report is rendered.
+type Options struct {
+	// ASCII swaps box-drawing and maths characters for plain substitutes.
+	ASCII bool
+	// Water is the estimate to display. It is computed by the caller, which
+	// owns the configured rate.
+	Water water.Estimate
+}
+
+const indent = "  "
+
+// tabPadding doubles as the indent for right-aligned tables: tabwriter places
+// an AlignRight column's padding to the left of the first cell, so a padding of
+// two lines those tables up with the surrounding prose for free.
+const tabPadding = 2
+
+// flushTable copies a rendered table into the output, dropping the trailing
+// padding tabwriter leaves behind and applying prefix to each line.
+func flushTable(b *strings.Builder, buf *bytes.Buffer, prefix string) {
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		b.WriteString(prefix)
+		b.WriteString(strings.TrimRight(line, " "))
+		b.WriteByte('\n')
+	}
+}
+
+// Summary writes the default one-screen view.
+func Summary(w io.Writer, rep *report.Report, opts Options) error {
+	g := unicodeGlyphs
+	if opts.ASCII {
+		g = asciiGlyphs
+	}
+	var b strings.Builder
+
+	writeHeader(&b, rep, g)
+	if rep.Overall.Requests == 0 {
+		writeEmpty(&b, rep)
+		_, err := io.WriteString(w, b.String())
+		return err
+	}
+
+	b.WriteString("\n")
+	writeTokens(&b, rep)
+	b.WriteString("\n")
+	writeModels(&b, rep)
+	b.WriteString("\n")
+	writeTotals(&b, rep, opts, g)
+	b.WriteString("\n")
+	writeFootnotes(&b, rep, opts, g)
+
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+func writeHeader(b *strings.Builder, rep *report.Report, g glyphs) {
+	parts := []string{"Claude Code usage", DescribeWindow(rep.Window)}
+	if rep.Overall.Requests > 0 {
+		parts = append(parts, fmt.Sprintf("%s across %s",
+			Plural(rep.Overall.Sessions, "session", "sessions"),
+			Plural(rep.Overall.Projects, "project", "projects")))
+	}
+	fmt.Fprintf(b, "%s%s\n", indent, strings.Join(parts, " "+g.sep+" "))
+}
+
+func writeEmpty(b *strings.Builder, rep *report.Report) {
+	b.WriteString("\n")
+	switch {
+	case rep.Filtered > 0:
+		fmt.Fprintf(b, "%sNo usage in this window. %s fell outside it.\n",
+			indent, Plural(int(rep.Filtered), "record", "records"))
+	default:
+		fmt.Fprintf(b, "%sNo usage found.\n", indent)
+	}
+}
+
+// writeTokens renders the five billed classes. The cache-write classes stay
+// apart because they bill at different rates, and the 1-hour class dominates.
+func writeTokens(b *strings.Builder, rep *report.Report) {
+	t := rep.Overall.Tokens
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding, ' ', tabwriter.AlignRight)
+	// The label cells are padded to a common width so that right alignment
+	// applies only to the numeric columns.
+	fmt.Fprintf(tw, "%-6s\t%s\t%s\t%s\t%s\t%s\t\n",
+		"Tokens", "input", "output", "cache 5m", "cache 1h", "cache read")
+	fmt.Fprintf(tw, "%-6s\t%s\t%s\t%s\t%s\t%s\t\n",
+		"", Tokens(t.Input), Tokens(t.Output), Tokens(t.CacheWrite5m),
+		Tokens(t.CacheWrite1h), Tokens(t.CacheRead))
+	tw.Flush()
+	flushTable(b, &buf, "")
+}
+
+func writeModels(b *strings.Builder, rep *report.Report) {
+	width := len("Model")
+	for _, g := range rep.ByModel {
+		if len(g.Key) > width {
+			width = len(g.Key)
+		}
+	}
+	// The label column is padded to a uniform width first, so tabwriter's
+	// right alignment applies only to the numeric columns.
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "%-*s\t%s\t%s\t\n", width, "Model", "tokens", "cost")
+	for _, g := range rep.ByModel {
+		cost := USD(g.Cost.Total)
+		if g.UnpricedTokens > 0 {
+			cost = "unpriced"
+		}
+		fmt.Fprintf(tw, "%-*s\t%s\t%s\t\n", width, g.Key, Tokens(g.Tokens.Total()), cost)
+	}
+	tw.Flush()
+	flushTable(b, &buf, "")
+}
+
+func writeTotals(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
+	// Left aligned throughout: the trailing column is prose, which would read
+	// oddly ragged if right aligned.
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding+1, ' ', 0)
+	fmt.Fprintf(tw, "Cost\t%s\tat API list prices\t\n", USD(rep.Overall.Cost.Total))
+	fmt.Fprintf(tw, "Water\t%s\t%s\t\n",
+		g.approx+" "+opts.Water.Volume(), opts.Water.Equivalence)
+	tw.Flush()
+	flushTable(b, &buf, indent)
+}
+
+// writeFootnotes emits the two mandatory caveats, then any that apply to this
+// particular run. Both mandatory notes are part of the tool's honesty about its
+// own accuracy and are never suppressed.
+func writeFootnotes(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
+	notes := []string{
+		"Cost is what this usage would cost at API rates, not what you were billed;\n" +
+			"Claude Code on a subscription draws from your plan allowance instead.",
+		"Water " + opts.Water.Assumption() + ". See README.",
+	}
+
+	if n := len(rep.UnknownModels); n > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s had no rate and %s excluded from the cost total: %s.\n"+
+				"Add %s to pricing.json to price %s.",
+			Plural(n, "model", "models"), pick(n, "was", "were"),
+			strings.Join(rep.UnknownModels, ", "),
+			pick(n, "it", "them"), pick(n, "it", "them")))
+	}
+	if rep.Stats.FlatCacheFallback > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s carried no cache-write TTL split; those writes were billed as\n"+
+				"5-minute writes, which understates any that were really 1-hour writes.",
+			Plural(int(rep.Stats.FlatCacheFallback), "record", "records")))
+	}
+	if rep.FastRequests > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s used fast mode, which bills at roughly double the standard rate.",
+			Plural(int(rep.FastRequests), "request", "requests")))
+	}
+	if rep.USGeoRequests > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s pinned inference to the US, which adds 10%% to every token class.",
+			Plural(int(rep.USGeoRequests), "request", "requests")))
+	}
+	if rep.BatchRequests > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s ran on the batch tier at half the standard rate.",
+			Plural(int(rep.BatchRequests), "request", "requests")))
+	}
+	if n := rep.Overall.Tokens.WebSearches; n > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"Includes %s. Failed searches are not billed but are\n"+
+				"indistinguishable here, so that charge is an upper bound.",
+			Plural(int(n), "web search", "web searches")))
+	}
+	if rep.Undated > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%s had no usable timestamp and %s counted in the totals but not by day.",
+			Plural(int(rep.Undated), "record", "records"),
+			pick(int(rep.Undated), "is", "are")))
+	}
+
+	for _, n := range notes {
+		lines := strings.Split(n, "\n")
+		fmt.Fprintf(b, "%s%s %s\n", indent, g.bullet, lines[0])
+		for _, l := range lines[1:] {
+			fmt.Fprintf(b, "%s  %s\n", indent, l)
+		}
+	}
+}
+
+// pick chooses between singular and plural wording so that a footnote reads
+// naturally whether it describes one item or many.
+func pick(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// DescribeWindow names a window the way a reader would say it aloud.
+func DescribeWindow(w report.Window) string {
+	switch {
+	case w.Unbounded():
+		return "all time"
+	case w.Start.IsZero():
+		return "until " + day(lastIncludedDay(w.End))
+	case w.End.IsZero():
+		return "since " + day(w.Start)
+	}
+	return day(w.Start) + " to " + day(lastIncludedDay(w.End))
+}
+
+// The window's end is exclusive, so the last day a reader would name is the one
+// before it.
+func lastIncludedDay(end time.Time) time.Time { return end.AddDate(0, 0, -1) }
+
+func day(t time.Time) string { return t.Format("2006-01-02") }
