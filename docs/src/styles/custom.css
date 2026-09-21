@@ -1,0 +1,28 @@
+/* The terminal screenshots are dark, so the accent is drawn from the tool's own
+   palette: the warm orange it uses for token counts. */
+:root {
+  --sl-color-accent-low: #3a1d12;
+  --sl-color-accent: #c2613c;
+  --sl-color-accent-high: #f0b49a;
+  --sl-color-white: #ffffff;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fbe3d8;
+  --sl-color-accent: #a94b28;
+  --sl-color-accent-high: #4a2113;
+}
+
+/* Screenshots are wide terminal captures; a subtle frame keeps them from
+   bleeding into the prose on light backgrounds. */
+.sl-markdown-content img {
+  border-radius: 0.5rem;
+  border: 1px solid var(--sl-color-gray-5);
+}
+
+/* Output samples are the point of several pages, so give them room to breathe
+   without shrinking to an unreadable size. */
+.sl-markdown-content pre {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
