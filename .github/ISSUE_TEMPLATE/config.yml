@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/12fahed/cca/discussions
+    about: Ask how something works, or float an idea before building it.
+  - name: Documentation
+    url: https://12fahed.github.io/cca
+    about: Commands, flags, configuration, and how the numbers are calculated.
+  - name: Report a vulnerability
+    url: https://github.com/12fahed/cca/security/advisories/new
+    about: Please report security issues privately, not as a public issue.

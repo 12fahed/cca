@@ -70,11 +70,12 @@ even when the Claude directory is missing — which is exactly when you need it.
 ### `cca version`
 
 ```
-cca       2aaa79b
-commit    2aaa79b
-built     2026-09-21T20:00:33Z
+cca       v0.1.0
+commit    1964cd1
+built     2026-09-22T09:14:03Z
 go        go1.27.1
 platform  linux/amd64
+license   GPL-3.0, no warranty — https://github.com/12fahed/cca/blob/main/LICENSE
 ```
 
 Version, commit and build date are injected at build time.

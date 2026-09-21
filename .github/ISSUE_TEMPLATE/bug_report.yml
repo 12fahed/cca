@@ -1,0 +1,82 @@
+name: Bug report
+description: A figure looks wrong, a command fails, or output is malformed.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting.
+
+        **Never attach a real transcript.** They contain your source code and
+        your conversations. If you can reproduce the issue with a synthetic
+        file, that is the most useful thing you can include —
+        [GETTING_STARTED.md](https://github.com/12fahed/cca/blob/main/GETTING_STARTED.md#5-work-without-touching-your-real-data)
+        shows how to build one.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+      placeholder: |
+        I expected `cca week` to match the sum of the last seven `cca daily`
+        rows, but it reports roughly double.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The exact command, and a synthetic fixture if you have one.
+      render: shell
+      placeholder: |
+        cca week
+        cca daily
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: Output of `cca version`.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: verbose
+    attributes:
+      label: Diagnostics
+      description: |
+        Output of `cca --verbose`. This shows what was scanned and what was
+        dropped, which usually identifies the problem straight away.
+
+        It also prints your project directory names — redact them if you would
+        rather not share them.
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am on the latest release, or on `main`
+          required: true
+        - label: I have not attached a real transcript
+          required: true

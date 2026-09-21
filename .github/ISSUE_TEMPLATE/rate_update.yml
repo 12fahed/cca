@@ -1,0 +1,57 @@
+name: Rate or model update
+description: A price changed, or a model is missing from the rate table.
+labels: ["pricing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `cca` never infers a rate — every figure is transcribed from a published
+        price sheet. A source link is therefore required.
+
+        This is a data-only change and a good first contribution: see
+        [adding a model](https://github.com/12fahed/cca/blob/main/CONTRIBUTING.md#adding-a-model-to-the-rate-table).
+
+  - type: input
+    id: model
+    attributes:
+      label: Model id
+      description: Exactly as it appears in `message.model`, or in the price sheet.
+      placeholder: claude-example-6
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: A link to the published pricing page.
+      placeholder: https://platform.claude.com/docs/en/about-claude/pricing
+    validations:
+      required: true
+
+  - type: textarea
+    id: rates
+    attributes:
+      label: Rates
+      description: USD per million tokens for all five billed classes.
+      render: json
+      placeholder: |
+        {
+          "input": 4.00,
+          "output": 20.00,
+          "cache_write_5m": 5.00,
+          "cache_write_1h": 8.00,
+          "cache_read": 0.40
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything unusual
+      description: |
+        Fast mode support, a cache-read rate that is not the usual 0.1x of
+        input, or an id that is a prefix of another model's.
+    validations:
+      required: false

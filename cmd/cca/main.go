@@ -1,5 +1,19 @@
 // Command cca reports Claude Code token usage, cost at API list prices, and a
 // rough water estimate, computed from local transcripts under ~/.claude.
+//
+// # Copyright (C) 2026 Fahed Khan
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along with
+// this program. If not, see <https://www.gnu.org/licenses/>.
 package main
 
 import (
@@ -27,6 +41,11 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
+
+// licenseNotice is shown by `cca version`. The GPL asks that a program carry a
+// short notice of its terms and of the absence of warranty where it reasonably
+// can; for a non-interactive tool, the version output is that place.
+const licenseNotice = "GPL-3.0, no warranty — https://github.com/12fahed/cca/blob/main/LICENSE"
 
 const (
 	exitOK    = 0
@@ -357,6 +376,7 @@ func runVersion(_ *options, out io.Writer) error {
 	fmt.Fprintf(w, "built\t%s\n", date)
 	fmt.Fprintf(w, "go\t%s\n", runtime.Version())
 	fmt.Fprintf(w, "platform\t%s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(w, "license\t%s\n", licenseNotice)
 	return w.Flush()
 }
 

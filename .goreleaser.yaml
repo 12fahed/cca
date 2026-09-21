@@ -98,6 +98,6 @@ release:
 #     directory: Formula
 #     homepage: https://github.com/12fahed/cca
 #     description: Analyze local Claude Code token usage, cost, and water footprint
-#     license: MIT
+#     license: GPL-3.0
 #     test: |
 #       system "#{bin}/cca", "version"

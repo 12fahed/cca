@@ -37,10 +37,11 @@ cca version
 
 ```
 cca       v0.1.0
-commit    a1b2c3d
+commit    1964cd1
 built     2026-09-22T09:14:03Z
 go        go1.27.1
 platform  linux/amd64
+license   GPL-3.0, no warranty — https://github.com/12fahed/cca/blob/main/LICENSE
 ```
 
 ## Download a binary

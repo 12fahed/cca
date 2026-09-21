@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a new view, flag, or capability.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem before the solution — there may be a
+        simpler answer than the one you have in mind.
+
+        Worth reading first: the
+        [constraints](https://github.com/12fahed/cca/blob/main/CONTRIBUTING.md#constraints-that-are-not-up-for-negotiation)
+        that a change cannot break, notably no network access at runtime, no
+        writes to `~/.claude`, and no new runtime dependencies.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to find out that cca cannot tell you?
+      placeholder: |
+        I want to know which days of the week I use Claude Code most, and
+        `cca daily` gives me dates rather than weekdays.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: A command, a flag, a column. Sketch the output if you can.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: |
+        Can `--json` plus a script already do this? If so, say what was awkward
+        about it — that is useful even if the answer is "script it".
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This needs no network access at runtime
+          required: true
+        - label: This needs no writes to `~/.claude`
+          required: true

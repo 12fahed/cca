@@ -129,12 +129,15 @@ func TestBadWindowIsRejected(t *testing.T) {
 	}
 }
 
+// Version output carries the build stamp and the licence notice. The GPL asks
+// that a program state its terms and the absence of warranty where it
+// reasonably can, and for a non-interactive tool this is that place.
 func TestVersionReportsBuildInfo(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"version"}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("version exited %d: %s", code, stderr.String())
 	}
-	for _, want := range []string{version, commit, date, "platform"} {
+	for _, want := range []string{version, commit, date, "platform", "GPL-3.0"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("version output missing %q:\n%s", want, stdout.String())
 		}
