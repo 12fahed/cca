@@ -1,66 +1,61 @@
+<div align="center">
+
+<img src="docs/public/cca-logo.svg" alt="cca logo" width="128" height="128">
+
 # cca
 
-Analyze your local Claude Code usage: tokens, what it would have cost at API list
-prices, and — for fun — roughly how much water it took.
+**See what Claude Code actually costs you — tokens, dollars, and a glass of water.**
 
-```
-  Claude Code usage · all time · 13 sessions across 3 projects
+[![ci](https://github.com/12fahed/cca/actions/workflows/ci.yml/badge.svg)](https://github.com/12fahed/cca/actions/workflows/ci.yml)
+[![docs](https://img.shields.io/badge/docs-12fahed.github.io%2Fcca-c2613c)](https://12fahed.github.io/cca)
+[![release](https://img.shields.io/github/v/release/12fahed/cca?display_name=tag&sort=semver)](https://github.com/12fahed/cca/releases)
+[![license](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![go](https://img.shields.io/badge/go-1.27%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](https://github.com/12fahed/cca/releases)
 
-  Tokens   input  output  cache 5m  cache 1h  cache read
-          144.5K  673.5K    503.0K      6.6M       52.0M
+<img src="docs/public/banner.png" alt="cca summarising all-time Claude Code usage in a terminal" width="860">
 
-  Model                      tokens    cost
-  claude-opus-5               20.3M  $37.87
-  claude-sonnet-5             20.3M  $15.97
-  claude-haiku-4-5-20251001   19.4M   $6.99
+[**Documentation**](https://12fahed.github.io/cca) ·
+[Installation](https://12fahed.github.io/cca/start/installation/) ·
+[Commands](https://12fahed.github.io/cca/reference/commands/) ·
+[Contributing](CONTRIBUTING.md)
 
-  Cost    $60.82     at API list prices
-  Water   ≈ 18.0 L   about 2 minutes of shower
+</div>
 
-  ─ Cost is what this usage would cost at API rates, not what you were billed;
-    Claude Code on a subscription draws from your plan allowance instead.
-  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
-```
+---
 
-**The dollar figure is not a bill.** Claude Code on a Pro, Max, or Team plan does not
-charge per token — it draws from a plan allowance. What `cca` reports is what the same
-usage *would* have cost at published API rates. That is a useful gauge of how heavily
-you lean on the tool. It is not an invoice, and it will not match one.
+`cca` reads the transcripts Claude Code already writes to your machine and tells you how
+many tokens you have burned, what that would have cost at API list prices, and — for fun
+— roughly how much water it implies.
 
-`cca` reads local files only, sends nothing anywhere, works entirely offline, and never
-writes to `~/.claude`.
+It runs entirely offline, reads one directory, and never writes to it.
+
+> [!IMPORTANT]
+> **The dollar figure is not a bill.** Claude Code on a Pro, Max, or Team plan does not
+> charge per token — it draws from a plan allowance. What `cca` reports is what the same
+> usage *would* have cost at published API rates. That is a useful gauge of how heavily
+> you lean on the tool. It is not an invoice, and it will not match one.
 
 ## Install
 
-### Build from source
-
-Requires Go 1.27 or newer.
+**Build from source** — requires Go 1.27 or newer:
 
 ```sh
 git clone https://github.com/12fahed/cca.git
 cd cca
-make build      # produces ./cca
+make build
+sudo install -m 0755 cca /usr/local/bin/cca   # macOS, Linux
 ```
 
-Put it on your `PATH`:
+**Or download a binary** for macOS (arm64/amd64), Linux (amd64/arm64) or Windows (amd64)
+from the [releases page](https://github.com/12fahed/cca/releases). Each is a single
+static binary with no runtime dependencies.
 
-```sh
-sudo install -m 0755 cca /usr/local/bin/cca     # macOS, Linux
-```
+> [!NOTE]
+> `go install` is not supported. The module path is `cca` rather than a domain-qualified
+> path, so it cannot be resolved remotely. Clone and build instead.
 
-On Windows, copy `cca.exe` somewhere on your `PATH`.
-
-### Download a binary
-
-Prebuilt archives for macOS (arm64, amd64), Linux (amd64, arm64) and Windows (amd64) are
-attached to each [release](https://github.com/12fahed/cca/releases), with a
-`checksums.txt` alongside them. Each is a single static binary with no runtime
-dependencies.
-
-### Not `go install`
-
-The module path is `cca` rather than a domain-qualified path, so
-`go install cca/cmd/cca@latest` cannot resolve. Clone and build instead.
+Full instructions: [Installation](https://12fahed.github.io/cca/start/installation/).
 
 ## Usage
 
@@ -77,7 +72,7 @@ cca config                   # resolved settings and where they came from
 cca version
 ```
 
-Time ranges apply to any usage view:
+Narrow any view to a window:
 
 ```sh
 cca --since 7d                              # relative: Nd, Nw, Nm
@@ -85,29 +80,15 @@ cca --since 2026-09-01 --until 2026-09-14   # inclusive of both days
 ```
 
 `--since 7d` means the last seven calendar days **including today**, so it lines up with
-a seven-row `cca daily` table. `--until` includes the whole day you name.
+a seven-row `cca daily` table.
 
-### Flags
+### Where the money went
 
-| Flag | Effect |
-|---|---|
-| `--json` | machine-readable output; exact token counts, full session ids |
-| `--csv` | CSV rows for the current view |
-| `--since`, `--until` | limit the time window |
-| `--top N` | rows in the `sessions` view (default 10) |
-| `--no-sidechains` | exclude sub-agent usage |
-| `--claude-dir` | read transcripts from somewhere other than `~/.claude` |
-| `--pricing` | use an alternate `pricing.json` |
-| `--water-ml-per-1k` | override the water constant |
-| `--verbose` | show files scanned, records kept, duplicates dropped, warnings |
-| `--no-color` | disable styling (`NO_COLOR` is honoured too) |
-| `--ascii` | plain ASCII for terminals that mangle `·`, `≈` and `─` |
-
-### Examples
+```sh
+$ cca projects
+```
 
 ```
-$ cca projects
-
   Claude Code usage · by project · all time
 
   Project                  sessions  requests  tokens    cost  share
@@ -116,89 +97,81 @@ $ cca projects
   -home-dev-web-dashboard         5       128   22.1M  $14.43  23.7%
 
   Total                          13       340   60.0M  $60.82
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+```
+
+```sh
+$ cca sessions --top 5
 ```
 
 ```
-$ cca sessions --top 3
+  Claude Code usage · by session · all time
 
   Session   started     project                  requests  tokens    cost
   070d7109  2026-09-15  -home-dev-payments-api         38    7.1M  $11.09
   7a3a8394  2026-09-08  -home-dev-infra-scripts        35    7.6M   $7.46
   b82763ba  2026-09-07  -home-dev-infra-scripts        41    6.7M   $6.05
+  bee80626  2026-09-18  -home-dev-payments-api         26    4.9M   $6.03
+  a3a16d92  2026-09-16  -home-dev-web-dashboard        34    6.7M   $4.64
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
 ```
 
-Project names are the slugified working directories Claude Code stores transcripts under;
-long ones are shortened from the left, since the tail is what distinguishes them. Session
-ids are shortened for the table and appear in full in `--json` and `--csv`.
+### Scripting
 
-```
-$ cca --verbose | tail -6
-
-  Scan · 18 files, 450 lines
-                            count
-  usage records kept          340
-  duplicates dropped  110 (24.4%)
+```sh
+cca --json | jq '.totals.cost_usd.total'
+cca models --json | jq -r '.models[] | "\(.key)\t\(.cost_usd.total)"'
+cca daily --csv > usage.csv
 ```
 
-## Configuration
+`--json` and `--csv` work on every view, carry exact token counts and full session
+identifiers, and are never styled. See
+[JSON and CSV output](https://12fahed.github.io/cca/guides/machine-output/).
 
-`cca` works with no configuration. To change a default, create `config.json` at:
+### Flags
 
-- `~/.config/cca/config.json` (or `$XDG_CONFIG_HOME/cca/config.json`)
-- `%APPDATA%\cca\config.json` on Windows
+| Flag | Effect |
+| --- | --- |
+| `--json`, `--csv` | machine-readable output for the current view |
+| `--since`, `--until` | limit the time window |
+| `--top N` | rows in the `sessions` view (default 10) |
+| `--no-sidechains` | exclude sub-agent usage |
+| `--claude-dir` | read transcripts from somewhere other than `~/.claude` |
+| `--pricing` | use an alternate `pricing.json` |
+| `--water-ml-per-1k` | override the water constant |
+| `--verbose` | files scanned, records kept, duplicates dropped, warnings |
+| `--no-color`, `--ascii` | disable styling; plain ASCII output |
 
-```json
-{
-  "water_ml_per_1k_tokens": 0.30,
-  "claude_dir": "",
-  "pricing": "",
-  "no_sidechains": false,
-  "ascii": false,
-  "no_color": false
-}
-```
-
-Every key is optional, and a command-line flag always wins over the file. `cca config`
-shows the resolved values **and which layer supplied each one**, which is the quickest way
-to work out why `cca` is behaving as it is.
+Full list: [Flags](https://12fahed.github.io/cca/reference/flags/).
 
 ## How the cost is calculated
-
-Claude Code writes one JSON object per line into
-`~/.claude/projects/<slug>/<session>.jsonl`, and sub-agent sessions into
-`<session>/subagents/agent-*.jsonl`. `cca` streams those files, keeps the assistant
-records that carry token accounting, and prices them.
 
 Three details do most of the work:
 
 **Deduplication.** The same assistant message is replayed into several files by resumed
 sessions and by compaction. On real corpora this is routinely **half the records** — the
-corpus this tool was developed against was 54% duplicates. Without deduplication every
-total would be roughly double. `cca` keys on the message id plus request id, falling back
-to the record uuid, across all files at once.
+corpus this tool was built against was 54% duplicates. Without deduplication every total
+would be roughly double.
 
-**Cache write TTLs.** Cached input is billed differently depending on whether it was
-written with a 5-minute or a 1-hour lifetime — 1.25x and 2x the base input rate. The two
-are reported separately because the split matters: the development corpus was 96%
-1-hour writes, so collapsing them would have understated cache-write cost by about a third.
+**Cache write tiers.** Cached input bills differently depending on whether it was written
+with a 5-minute or a 1-hour lifetime — 1.25x and 2x the base input rate. The development
+corpus was 96% 1-hour writes, so collapsing them would have understated cache-write cost
+by about a third.
 
-**Absolute rates, not multipliers.** [`internal/pricing/pricing.json`](internal/pricing/pricing.json)
-stores USD per million tokens for all five billed classes of every model, mirroring the
-published price sheet. That makes each number checkable by eye and removes the arithmetic
-that per-model exceptions would otherwise need.
+**Absolute rates, not multipliers.**
+[`internal/pricing/pricing.json`](internal/pricing/pricing.json) stores USD per million
+tokens for all five billed classes of every model, mirroring the published price sheet.
+Each number is checkable by eye, and per-model exceptions need no special arithmetic.
 
-Fast mode, `us`-pinned inference (+10%), and the batch tier are applied where the
-transcript records them. Web search is billed per request; web fetch is not.
+Rates change, so drop a `pricing.json` beside your config or pass `--pricing PATH`; it
+**replaces** the embedded table entirely. If a model has no rate, `cca` counts its tokens,
+leaves it out of the dollar total, and names it in a footnote. It never guesses.
 
-### Overriding the rates
-
-Rates change. Drop a `pricing.json` beside your `config.json`, or pass `--pricing PATH`,
-and it **replaces** the embedded table entirely — a price change is a data edit, never a
-rebuild. Start by copying
-[`internal/pricing/pricing.json`](internal/pricing/pricing.json).
-
-If a model has no rate, `cca` counts its tokens, leaves it out of the dollar total, and
-says so in a footnote naming the model. It never guesses a rate.
+Details: [How cost is calculated](https://12fahed.github.io/cca/internals/cost/).
 
 ## The water estimate
 
@@ -210,9 +183,8 @@ power mix, and whether the figure counts only on-site evaporation or also the wa
 to generate the electricity. Anyone quoting a precise number is extrapolating.
 
 So `cca` does the least-bad thing: one constant, `0.30 mL per 1,000 tokens`, applied flat
-across every model and token class, with the assumption printed next to the result every
-single time. It is a **placeholder, not a measurement**. Scaling it per model would be
-false precision dressed up as rigour.
+across every model and token class, with the assumption printed beside the result every
+single time. It is a **placeholder, not a measurement**.
 
 If you have a figure you trust more, use it:
 
@@ -220,42 +192,38 @@ If you have a figure you trust more, use it:
 cca --water-ml-per-1k 0.12
 ```
 
-or set `water_ml_per_1k_tokens` in `config.json`.
+More: [The water estimate](https://12fahed.github.io/cca/internals/water/).
 
 ## Accuracy and limitations
 
 Worth knowing before you quote a number from this tool.
 
-- **The transcript format is undocumented and internal to Claude Code.** It changes without
-  notice — the development corpus alone contained files written by versions 2.1.178,
-  2.1.247 and 2.1.270. `cca` parses tolerantly, skips what it cannot read, and counts the
-  skips under `--verbose`. A future version could still break it.
-- **Totals can go *down* between runs.** Claude Code prunes and rotates transcripts, so
-  history disappears over time. `cca` reports what is on disk now; it is not an
-  append-only ledger.
+- **The transcript format is undocumented** and internal to Claude Code. It changes
+  without notice — the development corpus alone held files written by three versions.
+- **Totals can go *down* between runs.** Claude Code prunes and rotates transcripts.
+  `cca` reports what is on disk now; it is not an append-only ledger.
 - **A transcript is not a guaranteed-complete record of billed turns.** Claude Code's own
-  per-session accounting has been observed to include a request whose record was never
-  written to the transcript. `cca` can only count what it can read, so a session's figure
-  can be an undercount.
-- **Web search cost is an upper bound.** Failed searches are not billed, but the transcript
-  does not mark them.
-- **Raw token counts are not comparable across model generations.** Claude 4.7 and later
-  use a tokenizer that produces roughly 30% more tokens for the same text. Costs are
-  unaffected, since real tokens are counted — but a token column comparing an Opus 4.8 row
-  against a Haiku 4.5 row is not measuring the same thing.
-- **Sub-agent usage is included by default**, tagged separately, and excludable with
-  `--no-sidechains`. It is real spend.
+  accounting has been observed to include a request whose record was never written.
+- **Web search cost is an upper bound** — failed searches are not billed, but the
+  transcript does not mark them.
+- **Token counts are not comparable across model generations.** Claude 4.7 and later use
+  a tokenizer producing roughly 30% more tokens for the same text. Costs are unaffected;
+  a token column comparing Opus 4.8 against Haiku 4.5 is not measuring the same thing.
+
+Full list: [Accuracy and limits](https://12fahed.github.io/cca/internals/accuracy/).
 
 ## Privacy
 
 `cca` reads `~/.claude` and nothing else. It makes **no network calls at any point** —
 the rate table is compiled into the binary — and it **never writes to, moves, or deletes
-anything under `~/.claude`**. Transcripts contain your source code and your conversations,
-so that restriction is enforced by tests: the directory is hashed before and after a run
-and must come back byte-identical, and the parser is checked for any file-writing call at
-all.
+anything under `~/.claude`**.
 
-Nothing is sent anywhere. There is no telemetry.
+Transcripts contain your source code and your conversations, so that restriction is
+enforced by tests: the directory is hashed before and after a run and must come back
+byte-identical, and the parser is checked for any file-writing call at all.
+
+No telemetry. Nothing is sent anywhere. See
+[Privacy](https://12fahed.github.io/cca/internals/privacy/).
 
 ## Development
 
@@ -265,5 +233,20 @@ go run test/run.go -cross   # also build all five release targets
 make build-all              # write those binaries to dist/
 ```
 
-See [test/README.md](test/README.md) for how the suite is laid out and why unit tests live
-beside their packages.
+See [test/README.md](test/README.md) for how the suite is laid out, and
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+The documentation site lives in [`docs/`](docs/) and is built with
+[Starlight](https://starlight.astro.build):
+
+```sh
+cd docs && npm install && npm run dev
+```
+
+## License
+
+[GPL-3.0](LICENSE) © Fahed Khan
+
+`cca` is free software: you may use, study, share and modify it. If you distribute it or
+a derivative, you must do so under the same license and make the corresponding source
+available. Running it — however heavily, however modified — triggers no obligation.
