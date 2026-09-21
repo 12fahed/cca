@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"cca/internal/config"
 	"cca/internal/report"
+	"cca/internal/water"
 )
 
 // env builds a getenv for the injected environment a test wants.
@@ -134,34 +136,214 @@ func TestWindowsRequiresAKnownTerminal(t *testing.T) {
 	}
 }
 
-// Styling must not disturb column alignment: it is applied to whole lines after
-// tabwriter has already measured them.
+// Styling must not disturb column alignment. Columns are measured against
+// visible width, so a styled table has to print identically to a plain one once
+// the escapes are removed. This holds for every view, not just one.
 func TestColorDoesNotChangeLayout(t *testing.T) {
 	rep := viewReport(t, report.Options{})
-	plain := renderTo(t, Models, rep)
-
-	var colored strings.Builder
-	if err := Models(&colored, rep, Options{Color: Palette{enabled: true}}); err != nil {
-		t.Fatal(err)
+	for name, view := range allViews() {
+		t.Run(name, func(t *testing.T) {
+			plain := renderTo(t, view, rep)
+			var colored strings.Builder
+			if err := view(&colored, rep, Options{Color: Palette{enabled: true}}); err != nil {
+				t.Fatal(err)
+			}
+			if got := stripANSI(colored.String()); got != plain {
+				t.Errorf("colour changed the layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+					got, plain)
+			}
+		})
 	}
-	if stripANSI(colored.String()) != plain {
-		t.Errorf("colour changed the layout\n--- stripped ---\n%s\n--- plain ---\n%s",
-			stripANSI(colored.String()), plain)
+
+	t.Run("summary", func(t *testing.T) {
+		plain := render(t, rep, false)
+		var colored strings.Builder
+		opts := Options{Color: Palette{enabled: true},
+			Water: water.For(rep.Overall.Tokens.Total(), water.DefaultMLPer1kTokens)}
+		if err := Summary(&colored, rep, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripANSI(colored.String()); got != plain {
+			t.Errorf("colour changed the summary layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain)
+		}
+	})
+}
+
+// Each kind of quantity gets its own hue, so a reader can find a figure by
+// colour. Distinctness is the property worth pinning; the exact codes are free
+// to be retuned.
+func TestSemanticStylesAreDistinct(t *testing.T) {
+	p := Palette{enabled: true}
+	seen := map[string]string{}
+	for name, styled := range map[string]string{
+		"tokens": p.Tokens("x"), "cost": p.Cost("x"), "water": p.Water("x"),
+		"warn": p.Warn("x"), "heading": p.Heading("x"),
+	} {
+		if styled == "x" {
+			t.Errorf("%s produced no styling", name)
+		}
+		if prev, dup := seen[styled]; dup && prev != "heading" && name != "muted" {
+			t.Errorf("%s and %s render identically", name, prev)
+		}
+		seen[styled] = name
 	}
 }
 
-func stripANSI(s string) string {
+func TestSemanticStylesArePlainWhenDisabled(t *testing.T) {
+	var p Palette
+	for name, styled := range map[string]string{
+		"tokens": p.Tokens("x"), "cost": p.Cost("x"), "water": p.Water("x"),
+		"warn": p.Warn("x"), "heading": p.Heading("x"), "muted": p.Muted("x"),
+		"strong": p.Strong("x"),
+	} {
+		if styled != "x" {
+			t.Errorf("%s styled a disabled palette: %q", name, styled)
+		}
+	}
+}
+
+// stripANSI defers to the production helper: it already handles both SGR runs
+// and OSC 8 hyperlinks, and reusing it means the test cannot drift from what
+// the layout code actually measures.
+func stripANSI(s string) string { return stripEscapes(s) }
+
+// A documentation reference becomes a terminal hyperlink where the terminal can
+// render one, and stays plain words where it cannot. Splicing a raw URL into
+// piped output would change what every script sees for no gain.
+func TestDocsReferenceLinksOnlyWhenStyled(t *testing.T) {
+	plain := docsRef(Palette{}, "README")
+	if plain != "README" {
+		t.Errorf("unstyled reference = %q, want plain text", plain)
+	}
+
+	linked := docsRef(Palette{enabled: true}, "README")
+	if !strings.Contains(linked, RepoURL) {
+		t.Errorf("styled reference does not carry the URL: %q", linked)
+	}
+	if !strings.Contains(linked, "\x1b]8;;") {
+		t.Errorf("styled reference is not an OSC 8 hyperlink: %q", linked)
+	}
+	// The link text still reads as the word, and occupies its width.
+	if got := visibleWidth(linked); got != len("README") {
+		t.Errorf("hyperlink measures %d columns, want %d", got, len("README"))
+	}
+	if !strings.Contains(stripEscapes(linked), "README") {
+		t.Errorf("link text lost: %q", stripEscapes(linked))
+	}
+}
+
+func TestLinkIsInertWithoutAURL(t *testing.T) {
+	p := Palette{enabled: true}
+	if got := p.Link("text", ""); got != "text" {
+		t.Errorf("Link with no URL = %q, want the text unchanged", got)
+	}
+}
+
+// Every documentation reference in terminal output points at the project, so a
+// reader can reach the explanation without first locating the source.
+func TestFootnotesLinkToTheProject(t *testing.T) {
+	rep := viewReport(t, report.Options{})
+	opts := Options{Color: Palette{enabled: true},
+		Water: water.For(rep.Overall.Tokens.Total(), water.DefaultMLPer1kTokens)}
+
 	var b strings.Builder
-	for i := 0; i < len(s); {
-		if s[i] == '\x1b' {
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			i++
+	if err := Summary(&b, rep, opts); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "README") {
+		t.Fatal("the water caveat should still reference the README")
+	}
+	if strings.Count(out, RepoURL) < 1 {
+		t.Errorf("the README reference is not linked to %s", RepoURL)
+	}
+}
+
+// The diagnostics and configuration views are built from the same table helper
+// and must hold their columns under colour too. They are not in allViews
+// because neither takes the same arguments as a report view.
+func TestColorDoesNotChangeDiagnosticsOrConfigLayout(t *testing.T) {
+	rep := viewReport(t, report.Options{})
+	styled := Options{Color: Palette{enabled: true}}
+
+	t.Run("diagnostics", func(t *testing.T) {
+		var plain, colored strings.Builder
+		if err := Diagnostics(&plain, rep, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := Diagnostics(&colored, rep, styled); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripEscapes(colored.String()); got != plain.String() {
+			t.Errorf("colour changed the diagnostics layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain.String())
+		}
+	})
+
+	t.Run("config", func(t *testing.T) {
+		cfg := config.Resolved{
+			WaterMLPer1k: 0.3,
+			ClaudeDir:    "/home/someone/.claude",
+			ConfigPath:   "/home/someone/.config/cca/config.json",
+			ConfigFound:  true,
+			Sources: map[string]config.Source{
+				config.KeyWater:     config.FromFlag,
+				config.KeyClaudeDir: config.FromDefault,
+			},
+		}
+		var plain, colored strings.Builder
+		if err := Config(&plain, cfg, "embedded default", Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := Config(&colored, cfg, "embedded default", styled); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripEscapes(colored.String()); got != plain.String() {
+			t.Errorf("colour changed the config layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain.String())
+		}
+	})
+}
+
+// A setting that came from a flag or a config file is why cca is behaving as it
+// is, so it should not look the same as an untouched default.
+func TestConfigHighlightsNonDefaultSources(t *testing.T) {
+	cfg := config.Resolved{
+		WaterMLPer1k: 0.9,
+		ClaudeDir:    "/home/someone/.claude",
+		ConfigPath:   "/cfg.json",
+		Sources: map[string]config.Source{
+			config.KeyWater:     config.FromFlag,
+			config.KeyClaudeDir: config.FromDefault,
+		},
+	}
+	var b strings.Builder
+	if err := Config(&b, cfg, "embedded default", Options{Color: Palette{enabled: true}}); err != nil {
+		t.Fatal(err)
+	}
+	// Only the settings table carries a source column; the footnotes mention
+	// the same key without being rows.
+	var checked int
+	for _, line := range strings.Split(b.String(), "\n") {
+		plain := stripEscapes(line)
+		if !strings.HasSuffix(plain, string(config.FromFlag)) &&
+			!strings.HasSuffix(plain, string(config.FromDefault)) {
 			continue
 		}
-		b.WriteByte(s[i])
-		i++
+		checked++
+		switch {
+		case strings.Contains(plain, config.KeyWater):
+			if !strings.Contains(line, ansiWarn) {
+				t.Errorf("a flag-supplied setting should stand out: %q", line)
+			}
+		case strings.Contains(plain, config.KeyClaudeDir):
+			if strings.Contains(line, ansiWarn) {
+				t.Errorf("an untouched default should not stand out: %q", line)
+			}
+		}
 	}
-	return b.String()
+	if checked < 2 {
+		t.Fatalf("expected to inspect both settings rows, saw %d", checked)
+	}
 }

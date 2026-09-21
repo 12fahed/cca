@@ -12,8 +12,8 @@ import (
 	"cca/internal/report"
 )
 
-// columnGap splits a rendered row on the run of spaces tabwriter inserts.
-var columnGap = regexp.MustCompile(` {2,}`)
+// cellSeparator splits a rendered row on the run of spaces between columns.
+var cellSeparator = regexp.MustCompile(` {2,}`)
 
 // tableRows parses a rendered table back into cells, dropping the header, the
 // blank separator, the totals rule, and the footnotes.
@@ -25,7 +25,7 @@ func tableRows(out string) [][]string {
 			strings.HasPrefix(t, "Claude Code") {
 			continue
 		}
-		rows = append(rows, columnGap.Split(t, -1))
+		rows = append(rows, cellSeparator.Split(t, -1))
 	}
 	return rows
 }

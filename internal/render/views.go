@@ -15,46 +15,63 @@ const costCaveat = "Cost is what this usage would cost at API rates, not what yo
 
 const maxProjectWidth = 34
 
+// RepoURL is where the project documentation lives. References to the README in
+// terminal output link here, so a reader can reach the explanation without
+// first working out where the source is.
+const RepoURL = "https://github.com/12fahed/cca"
+
+// docsRef renders a reference to the project's documentation, hyperlinked where
+// the terminal supports it and left as plain words where it does not.
+func docsRef(p Palette, text string) string {
+	return p.Link(p.linkStyle(text), RepoURL)
+}
+
 // Models writes the per-model breakdown.
 func Models(w io.Writer, rep *report.Report, opts Options) error {
+	p := opts.Color
 	return writeView(w, rep, opts, "by model", func(b *strings.Builder) {
 		t := newTable(1, "Model", "requests", "tokens", "cost", "share")
 		for _, g := range rep.ByModel {
-			t.add(g.Key, Count(g.Requests), Tokens(g.Tokens.Total()),
-				cost(g), share(g.Cost.Total, rep.Overall.Cost.Total))
+			t.add(g.Key, Count(g.Requests), p.Tokens(Tokens(g.Tokens.Total())),
+				costCell(g, p), p.Muted(share(g.Cost.Total, rep.Overall.Cost.Total)))
 		}
-		addTotals(t, rep, "")
-		t.withPalette(opts.Color).render(b)
+		addTotals(t, rep, p)
+		t.withPalette(p).render(b)
 	})
 }
 
 // Projects writes the per-project breakdown. Project keys are slugified working
 // directories, so they are shown tail-first to keep the distinguishing part.
 func Projects(w io.Writer, rep *report.Report, opts Options) error {
+	p := opts.Color
 	return writeView(w, rep, opts, "by project", func(b *strings.Builder) {
 		t := newTable(1, "Project", "sessions", "requests", "tokens", "cost", "share")
 		for _, g := range rep.ByProject {
 			t.add(shorten(g.Key, maxProjectWidth, opts.ASCII), Count(int64(g.Sessions)),
-				Count(g.Requests), Tokens(g.Tokens.Total()),
-				cost(g), share(g.Cost.Total, rep.Overall.Cost.Total))
+				Count(g.Requests), p.Tokens(Tokens(g.Tokens.Total())),
+				costCell(g, p), p.Muted(share(g.Cost.Total, rep.Overall.Cost.Total)))
 		}
-		t.addTotal("Total", Count(int64(rep.Overall.Sessions)), Count(rep.Overall.Requests),
-			Tokens(rep.Overall.Tokens.Total()), USD(rep.Overall.Cost.Total), "")
-		t.withPalette(opts.Color).render(b)
+		t.addTotal(p.Strong("Total"), p.Strong(Count(int64(rep.Overall.Sessions))),
+			p.Strong(Count(rep.Overall.Requests)),
+			p.Strong(p.Tokens(Tokens(rep.Overall.Tokens.Total()))),
+			p.Strong(p.Cost(USD(rep.Overall.Cost.Total))), "")
+		t.withPalette(p).render(b)
 	})
 }
 
 // Daily writes the per-day table, oldest first so the newest row sits nearest
 // the prompt.
 func Daily(w io.Writer, rep *report.Report, opts Options) error {
+	p := opts.Color
 	return writeView(w, rep, opts, "by day", func(b *strings.Builder) {
 		t := newTable(1, "Date", "requests", "tokens", "cost")
 		for _, g := range rep.ByDay {
-			t.add(g.Key, Count(g.Requests), Tokens(g.Tokens.Total()), cost(g))
+			t.add(g.Key, Count(g.Requests), p.Tokens(Tokens(g.Tokens.Total())), costCell(g, p))
 		}
-		t.addTotal("Total", Count(rep.Overall.Requests),
-			Tokens(rep.Overall.Tokens.Total()), USD(rep.Overall.Cost.Total))
-		t.withPalette(opts.Color).render(b)
+		t.addTotal(p.Strong("Total"), p.Strong(Count(rep.Overall.Requests)),
+			p.Strong(p.Tokens(Tokens(rep.Overall.Tokens.Total()))),
+			p.Strong(p.Cost(USD(rep.Overall.Cost.Total))))
+		t.withPalette(p).render(b)
 	})
 }
 
@@ -64,6 +81,7 @@ func Daily(w io.Writer, rep *report.Report, opts Options) error {
 // 80-column terminal. A short prefix is enough to identify one, and the full id
 // is available in machine-readable output.
 func Sessions(w io.Writer, rep *report.Report, opts Options) error {
+	p := opts.Color
 	return writeView(w, rep, opts, "by session", func(b *strings.Builder) {
 		t := newTable(3, "Session", "started", "project", "requests", "tokens", "cost")
 		for _, g := range rep.BySession {
@@ -74,10 +92,11 @@ func Sessions(w io.Writer, rep *report.Report, opts Options) error {
 			if !g.First.IsZero() {
 				started = g.First.Format("2006-01-02")
 			}
-			t.add(shortID(g.Key), started, shorten(g.Project, maxProjectWidth, opts.ASCII),
-				Count(g.Requests), Tokens(g.Tokens.Total()), cost(g))
+			t.add(shortID(g.Key), p.Muted(started),
+				shorten(g.Project, maxProjectWidth, opts.ASCII),
+				Count(g.Requests), p.Tokens(Tokens(g.Tokens.Total())), costCell(g, p))
 		}
-		t.withPalette(opts.Color).render(b)
+		t.withPalette(p).render(b)
 	})
 }
 
@@ -110,22 +129,27 @@ func writeView(w io.Writer, rep *report.Report, opts Options, title string, body
 	return err
 }
 
-func addTotals(t *table, rep *report.Report, extra string) {
-	cells := []string{"Total", Count(rep.Overall.Requests),
-		Tokens(rep.Overall.Tokens.Total()), USD(rep.Overall.Cost.Total)}
-	if extra != "" || len(t.headers) == 5 {
-		cells = append(cells, extra)
+func addTotals(t *table, rep *report.Report, p Palette) {
+	cells := []string{
+		p.Strong("Total"),
+		p.Strong(Count(rep.Overall.Requests)),
+		p.Strong(p.Tokens(Tokens(rep.Overall.Tokens.Total()))),
+		p.Strong(p.Cost(USD(rep.Overall.Cost.Total))),
+	}
+	if len(t.headers) == 5 {
+		cells = append(cells, "")
 	}
 	t.addTotal(cells...)
 }
 
-// cost renders a group's spend, marking the groups whose model had no rate
-// rather than printing a total that silently omits them.
-func cost(g report.Group) string {
+// costCell renders a group's spend, marking the groups whose model had no rate
+// rather than printing a figure that silently omits them. An unpriced row is
+// warned about rather than coloured as money, since there is no money in it.
+func costCell(g report.Group, p Palette) string {
 	if g.UnpricedTokens > 0 && g.Cost.Total == 0 {
-		return "unpriced"
+		return p.Warn("unpriced")
 	}
-	return USD(g.Cost.Total)
+	return p.Cost(USD(g.Cost.Total))
 }
 
 func share(part, whole float64) string {
