@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"cca/internal/config"
 	"cca/internal/report"
 	"cca/internal/water"
 )
@@ -256,5 +257,93 @@ func TestFootnotesLinkToTheProject(t *testing.T) {
 	}
 	if strings.Count(out, RepoURL) < 1 {
 		t.Errorf("the README reference is not linked to %s", RepoURL)
+	}
+}
+
+// The diagnostics and configuration views are built from the same table helper
+// and must hold their columns under colour too. They are not in allViews
+// because neither takes the same arguments as a report view.
+func TestColorDoesNotChangeDiagnosticsOrConfigLayout(t *testing.T) {
+	rep := viewReport(t, report.Options{})
+	styled := Options{Color: Palette{enabled: true}}
+
+	t.Run("diagnostics", func(t *testing.T) {
+		var plain, colored strings.Builder
+		if err := Diagnostics(&plain, rep, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := Diagnostics(&colored, rep, styled); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripEscapes(colored.String()); got != plain.String() {
+			t.Errorf("colour changed the diagnostics layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain.String())
+		}
+	})
+
+	t.Run("config", func(t *testing.T) {
+		cfg := config.Resolved{
+			WaterMLPer1k: 0.3,
+			ClaudeDir:    "/home/someone/.claude",
+			ConfigPath:   "/home/someone/.config/cca/config.json",
+			ConfigFound:  true,
+			Sources: map[string]config.Source{
+				config.KeyWater:     config.FromFlag,
+				config.KeyClaudeDir: config.FromDefault,
+			},
+		}
+		var plain, colored strings.Builder
+		if err := Config(&plain, cfg, "embedded default", Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := Config(&colored, cfg, "embedded default", styled); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripEscapes(colored.String()); got != plain.String() {
+			t.Errorf("colour changed the config layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain.String())
+		}
+	})
+}
+
+// A setting that came from a flag or a config file is why cca is behaving as it
+// is, so it should not look the same as an untouched default.
+func TestConfigHighlightsNonDefaultSources(t *testing.T) {
+	cfg := config.Resolved{
+		WaterMLPer1k: 0.9,
+		ClaudeDir:    "/home/someone/.claude",
+		ConfigPath:   "/cfg.json",
+		Sources: map[string]config.Source{
+			config.KeyWater:     config.FromFlag,
+			config.KeyClaudeDir: config.FromDefault,
+		},
+	}
+	var b strings.Builder
+	if err := Config(&b, cfg, "embedded default", Options{Color: Palette{enabled: true}}); err != nil {
+		t.Fatal(err)
+	}
+	// Only the settings table carries a source column; the footnotes mention
+	// the same key without being rows.
+	var checked int
+	for _, line := range strings.Split(b.String(), "\n") {
+		plain := stripEscapes(line)
+		if !strings.HasSuffix(plain, string(config.FromFlag)) &&
+			!strings.HasSuffix(plain, string(config.FromDefault)) {
+			continue
+		}
+		checked++
+		switch {
+		case strings.Contains(plain, config.KeyWater):
+			if !strings.Contains(line, ansiWarn) {
+				t.Errorf("a flag-supplied setting should stand out: %q", line)
+			}
+		case strings.Contains(plain, config.KeyClaudeDir):
+			if strings.Contains(line, ansiWarn) {
+				t.Errorf("an untouched default should not stand out: %q", line)
+			}
+		}
+	}
+	if checked < 2 {
+		t.Fatalf("expected to inspect both settings rows, saw %d", checked)
 	}
 }
