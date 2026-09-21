@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"cca/internal/report"
+	"cca/internal/water"
 )
 
 // env builds a getenv for the injected environment a test wants.
@@ -134,19 +135,70 @@ func TestWindowsRequiresAKnownTerminal(t *testing.T) {
 	}
 }
 
-// Styling must not disturb column alignment: it is applied to whole lines after
-// tabwriter has already measured them.
+// Styling must not disturb column alignment. Columns are measured against
+// visible width, so a styled table has to print identically to a plain one once
+// the escapes are removed. This holds for every view, not just one.
 func TestColorDoesNotChangeLayout(t *testing.T) {
 	rep := viewReport(t, report.Options{})
-	plain := renderTo(t, Models, rep)
-
-	var colored strings.Builder
-	if err := Models(&colored, rep, Options{Color: Palette{enabled: true}}); err != nil {
-		t.Fatal(err)
+	for name, view := range allViews() {
+		t.Run(name, func(t *testing.T) {
+			plain := renderTo(t, view, rep)
+			var colored strings.Builder
+			if err := view(&colored, rep, Options{Color: Palette{enabled: true}}); err != nil {
+				t.Fatal(err)
+			}
+			if got := stripANSI(colored.String()); got != plain {
+				t.Errorf("colour changed the layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+					got, plain)
+			}
+		})
 	}
-	if stripANSI(colored.String()) != plain {
-		t.Errorf("colour changed the layout\n--- stripped ---\n%s\n--- plain ---\n%s",
-			stripANSI(colored.String()), plain)
+
+	t.Run("summary", func(t *testing.T) {
+		plain := render(t, rep, false)
+		var colored strings.Builder
+		opts := Options{Color: Palette{enabled: true},
+			Water: water.For(rep.Overall.Tokens.Total(), water.DefaultMLPer1kTokens)}
+		if err := Summary(&colored, rep, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := stripANSI(colored.String()); got != plain {
+			t.Errorf("colour changed the summary layout\n--- stripped ---\n%s\n--- plain ---\n%s",
+				got, plain)
+		}
+	})
+}
+
+// Each kind of quantity gets its own hue, so a reader can find a figure by
+// colour. Distinctness is the property worth pinning; the exact codes are free
+// to be retuned.
+func TestSemanticStylesAreDistinct(t *testing.T) {
+	p := Palette{enabled: true}
+	seen := map[string]string{}
+	for name, styled := range map[string]string{
+		"tokens": p.Tokens("x"), "cost": p.Cost("x"), "water": p.Water("x"),
+		"warn": p.Warn("x"), "heading": p.Heading("x"),
+	} {
+		if styled == "x" {
+			t.Errorf("%s produced no styling", name)
+		}
+		if prev, dup := seen[styled]; dup && prev != "heading" && name != "muted" {
+			t.Errorf("%s and %s render identically", name, prev)
+		}
+		seen[styled] = name
+	}
+}
+
+func TestSemanticStylesArePlainWhenDisabled(t *testing.T) {
+	var p Palette
+	for name, styled := range map[string]string{
+		"tokens": p.Tokens("x"), "cost": p.Cost("x"), "water": p.Water("x"),
+		"warn": p.Warn("x"), "heading": p.Heading("x"), "muted": p.Muted("x"),
+		"strong": p.Strong("x"),
+	} {
+		if styled != "x" {
+			t.Errorf("%s styled a disabled palette: %q", name, styled)
+		}
 	}
 }
 

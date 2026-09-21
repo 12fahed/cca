@@ -1,11 +1,9 @@
 package render
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"cca/internal/report"
@@ -39,31 +37,6 @@ type Options struct {
 }
 
 const indent = "  "
-
-// tabPadding doubles as the indent for right-aligned tables: tabwriter places
-// an AlignRight column's padding to the left of the first cell, so a padding of
-// two lines those tables up with the surrounding prose for free.
-const tabPadding = 2
-
-// flushTable copies a rendered table into the output, dropping the trailing
-// padding tabwriter leaves behind and applying prefix to each line.
-func flushTable(b *strings.Builder, buf *bytes.Buffer, prefix string) {
-	flushTableStyled(b, buf, prefix, nil)
-}
-
-// flushTableStyled dims the header row once alignment is settled. Styling whole
-// lines after the fact keeps escape bytes out of tabwriter's width arithmetic.
-func flushTableStyled(b *strings.Builder, buf *bytes.Buffer, prefix string, p glyphPalette) {
-	for i, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
-		line = strings.TrimRight(line, " ")
-		if i == 0 && p != nil {
-			line = p.Dim(line)
-		}
-		b.WriteString(prefix)
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-}
 
 // Summary writes the default one-screen view.
 func Summary(w io.Writer, rep *report.Report, opts Options) error {
@@ -115,52 +88,33 @@ func writeEmpty(b *strings.Builder, rep *report.Report) {
 // apart because they bill at different rates, and the 1-hour class dominates.
 func writeTokens(b *strings.Builder, rep *report.Report, opts Options) {
 	t := rep.Overall.Tokens
-	var buf bytes.Buffer
-	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding, ' ', tabwriter.AlignRight)
-	// The label cells are padded to a common width so that right alignment
-	// applies only to the numeric columns.
-	fmt.Fprintf(tw, "%-6s\t%s\t%s\t%s\t%s\t%s\t\n",
-		"Tokens", "input", "output", "cache 5m", "cache 1h", "cache read")
-	fmt.Fprintf(tw, "%-6s\t%s\t%s\t%s\t%s\t%s\t\n",
-		"", Tokens(t.Input), Tokens(t.Output), Tokens(t.CacheWrite5m),
-		Tokens(t.CacheWrite1h), Tokens(t.CacheRead))
-	tw.Flush()
-	flushTableStyled(b, &buf, "", opts.Color)
+	p := opts.Color
+	tbl := newTable(1, "Tokens", "input", "output", "cache 5m", "cache 1h", "cache read").
+		withPalette(p)
+	tbl.add("", p.Tokens(Tokens(t.Input)), p.Tokens(Tokens(t.Output)),
+		p.Tokens(Tokens(t.CacheWrite5m)), p.Tokens(Tokens(t.CacheWrite1h)),
+		p.Tokens(Tokens(t.CacheRead)))
+	tbl.render(b)
 }
 
 func writeModels(b *strings.Builder, rep *report.Report, opts Options) {
-	width := len("Model")
+	p := opts.Color
+	tbl := newTable(1, "Model", "tokens", "cost").withPalette(p)
 	for _, g := range rep.ByModel {
-		if len(g.Key) > width {
-			width = len(g.Key)
-		}
+		tbl.add(g.Key, p.Tokens(Tokens(g.Tokens.Total())), costCell(g, p))
 	}
-	// The label column is padded to a uniform width first, so tabwriter's
-	// right alignment applies only to the numeric columns.
-	var buf bytes.Buffer
-	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding, ' ', tabwriter.AlignRight)
-	fmt.Fprintf(tw, "%-*s\t%s\t%s\t\n", width, "Model", "tokens", "cost")
-	for _, g := range rep.ByModel {
-		cost := USD(g.Cost.Total)
-		if g.UnpricedTokens > 0 {
-			cost = "unpriced"
-		}
-		fmt.Fprintf(tw, "%-*s\t%s\t%s\t\n", width, g.Key, Tokens(g.Tokens.Total()), cost)
-	}
-	tw.Flush()
-	flushTableStyled(b, &buf, "", opts.Color)
+	tbl.render(b)
 }
 
 func writeTotals(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
 	// Left aligned throughout: the trailing column is prose, which would read
 	// oddly ragged if right aligned.
-	var buf bytes.Buffer
-	tw := tabwriter.NewWriter(&buf, 0, 0, tabPadding+1, ' ', 0)
-	fmt.Fprintf(tw, "Cost\t%s\tat API list prices\t\n", USD(rep.Overall.Cost.Total))
-	fmt.Fprintf(tw, "Water\t%s\t%s\t\n",
-		g.approx+" "+opts.Water.Volume(), opts.Water.Equivalence)
-	tw.Flush()
-	flushTable(b, &buf, indent)
+	p := opts.Color
+	tbl := newTable(3, "", "", "").withGap(3)
+	tbl.add("Cost", p.Cost(USD(rep.Overall.Cost.Total)), p.Muted("at API list prices"))
+	tbl.add("Water", p.Water(g.approx+" "+opts.Water.Volume()),
+		p.Water(opts.Water.Equivalence))
+	tbl.render(b)
 }
 
 // writeFootnotes emits the two mandatory caveats, then any that apply to this

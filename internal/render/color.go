@@ -13,12 +13,33 @@ type Palette struct {
 	enabled bool
 }
 
-// ANSI sequences. Only dim and bold are used: this is a data tool, and colour
-// should pick out structure without competing with the numbers.
+// ANSI sequences.
+//
+// The palette is deliberately small and semantic: one hue per kind of quantity,
+// so a reader learns it once and can then find a figure by colour rather than
+// by reading the header. Everything that is not a quantity stays dim, which
+// keeps the numbers the brightest thing on screen.
+//
+// 256-colour codes are used rather than the 8 basic ones because the basic
+// palette is remapped by most themes, and a terminal that understands SGR at
+// all has understood 256 colours for many years.
 const (
 	ansiReset = "\x1b[0m"
 	ansiDim   = "\x1b[2m"
 	ansiBold  = "\x1b[1m"
+
+	// Warm orange for token counts, echoing Claude's own palette.
+	ansiTokens = "\x1b[38;5;209m"
+	// Green for money, the long-standing convention for currency.
+	ansiCost = "\x1b[38;5;114m"
+	// Light blue for the water figure: it reads as water, and it separates the
+	// playful estimate from the two figures meant to be taken seriously.
+	ansiWater = "\x1b[38;5;117m"
+	// Amber for anything the reader is being warned about.
+	ansiWarn = "\x1b[38;5;214m"
+	// Underlined blue for a hyperlink, for terminals that render OSC 8 without
+	// styling it themselves.
+	ansiLink = "\x1b[4;38;5;111m"
 )
 
 func (p Palette) Enabled() bool { return p.enabled }
@@ -28,6 +49,30 @@ func (p Palette) Dim(s string) string { return p.wrap(ansiDim, s) }
 
 // Bold marks the figures a reader is most likely looking for.
 func (p Palette) Bold(s string) string { return p.wrap(ansiBold, s) }
+
+// Semantic styles. Call sites name what a value means rather than what colour
+// it should be, so the scheme can be retuned in one place.
+
+// Tokens styles a token count.
+func (p Palette) Tokens(s string) string { return p.wrap(ansiTokens, s) }
+
+// Cost styles a money figure.
+func (p Palette) Cost(s string) string { return p.wrap(ansiCost, s) }
+
+// Water styles the water estimate and its equivalence.
+func (p Palette) Water(s string) string { return p.wrap(ansiWater, s) }
+
+// Warn styles something the reader is being cautioned about.
+func (p Palette) Warn(s string) string { return p.wrap(ansiWarn, s) }
+
+// Heading styles a column header row.
+func (p Palette) Heading(s string) string { return p.wrap(ansiDim, s) }
+
+// Muted styles supporting prose beside a figure.
+func (p Palette) Muted(s string) string { return p.wrap(ansiDim, s) }
+
+// Strong styles a totals row.
+func (p Palette) Strong(s string) string { return p.wrap(ansiBold, s) }
 
 func (p Palette) wrap(code, s string) string {
 	if !p.enabled || s == "" {
