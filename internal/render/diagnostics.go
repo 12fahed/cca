@@ -98,11 +98,14 @@ func Config(w io.Writer, cfg config.Resolved, tableOrigin string, opts Options) 
 	f.render(&b)
 
 	b.WriteString("\n")
-	writeNote(&b, g, "The water rate is a rough placeholder, not a measured value.\n"+
-		"Set "+config.KeyWater+" in the config file to substitute your own.")
+	writeNoteStyled(&b, g, opts.Color,
+		"The water rate is a rough placeholder, not a measured value.\n"+
+			"Set "+config.KeyWater+" in the config file to substitute your own; see "+
+			docsRef(opts.Color, "README")+".")
 	if !cfg.ConfigFound {
-		writeNote(&b, g, "No config file yet. Create one at the path above to change "+
-			"these defaults;\nevery key is optional and any flag overrides it.")
+		writeNoteStyled(&b, g, opts.Color,
+			"No config file yet. Create one at the path above to change these defaults;\n"+
+				"every key is optional and any flag overrides it.")
 	}
 
 	_, err := io.WriteString(w, b.String())

@@ -238,7 +238,7 @@ func TestSummaryFootnotePluralAgreement(t *testing.T) {
 
 	for _, want := range []string{
 		"2 models had no rate and were excluded",
-		"Add them to pricing.json to price them.",
+		"Add them to pricing.json to price them; see README.",
 		"2 records had no usable timestamp and are counted",
 		"Includes 1 web search.",
 	} {

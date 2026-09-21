@@ -42,6 +42,14 @@ const (
 	ansiLink = "\x1b[4;38;5;111m"
 )
 
+// OSC 8 hyperlink sequences. ST is written as ESC backslash rather than BEL,
+// which is the form the specification prefers.
+const (
+	oscLinkStart  = "\x1b]8;;"
+	oscLinkEnd    = "\x1b]8;;\x1b\\"
+	oscTerminator = "\x1b\\"
+)
+
 func (p Palette) Enabled() bool { return p.enabled }
 
 // Dim de-emphasises supporting text such as headers and footnotes.
@@ -73,6 +81,25 @@ func (p Palette) Muted(s string) string { return p.wrap(ansiDim, s) }
 
 // Strong styles a totals row.
 func (p Palette) Strong(s string) string { return p.wrap(ansiBold, s) }
+
+// Link renders text as a terminal hyperlink to url, using OSC 8.
+//
+// It is gated on the same capability check as colour. A terminal that cannot
+// render SGR will not render OSC 8 either, and an unsupported terminal prints
+// the escape sequence literally, which is far worse than a plain word. When
+// links are unavailable the text is returned unchanged rather than having the
+// raw URL spliced into it, so piped and redirected output stays exactly as it
+// reads today.
+func (p Palette) Link(text, url string) string {
+	if !p.enabled || url == "" {
+		return text
+	}
+	return oscLinkStart + url + oscTerminator + text + oscLinkEnd
+}
+
+// linkStyle underlines link text for terminals that render OSC 8 without
+// distinguishing it, and leaves it alone when styling is off.
+func (p Palette) linkStyle(s string) string { return p.wrap(ansiLink, s) }
 
 func (p Palette) wrap(code, s string) string {
 	if !p.enabled || s == "" {

@@ -123,16 +123,17 @@ func writeTotals(b *strings.Builder, rep *report.Report, opts Options, g glyphs)
 func writeFootnotes(b *strings.Builder, rep *report.Report, opts Options, g glyphs) {
 	notes := []string{
 		costCaveat,
-		"Water " + opts.Water.Assumption() + ". See README.",
+		"Water " + opts.Water.Assumption() + ". See " + docsRef(opts.Color, "README") + ".",
 	}
 
 	if n := len(rep.UnknownModels); n > 0 {
 		notes = append(notes, fmt.Sprintf(
 			"%s had no rate and %s excluded from the cost total: %s.\n"+
-				"Add %s to pricing.json to price %s.",
+				"Add %s to pricing.json to price %s; see %s.",
 			Plural(n, "model", "models"), pick(n, "was", "were"),
 			strings.Join(rep.UnknownModels, ", "),
-			pick(n, "it", "them"), pick(n, "it", "them")))
+			pick(n, "it", "them"), pick(n, "it", "them"),
+			docsRef(opts.Color, "README")))
 	}
 	if rep.Stats.FlatCacheFallback > 0 {
 		notes = append(notes, fmt.Sprintf(

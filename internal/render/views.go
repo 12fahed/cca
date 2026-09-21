@@ -15,6 +15,17 @@ const costCaveat = "Cost is what this usage would cost at API rates, not what yo
 
 const maxProjectWidth = 34
 
+// RepoURL is where the project documentation lives. References to the README in
+// terminal output link here, so a reader can reach the explanation without
+// first working out where the source is.
+const RepoURL = "https://github.com/12fahed/cca"
+
+// docsRef renders a reference to the project's documentation, hyperlinked where
+// the terminal supports it and left as plain words where it does not.
+func docsRef(p Palette, text string) string {
+	return p.Link(p.linkStyle(text), RepoURL)
+}
+
 // Models writes the per-model breakdown.
 func Models(w io.Writer, rep *report.Report, opts Options) error {
 	p := opts.Color

@@ -202,18 +202,59 @@ func TestSemanticStylesArePlainWhenDisabled(t *testing.T) {
 	}
 }
 
-func stripANSI(s string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		if s[i] == '\x1b' {
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			i++
-			continue
-		}
-		b.WriteByte(s[i])
-		i++
+// stripANSI defers to the production helper: it already handles both SGR runs
+// and OSC 8 hyperlinks, and reusing it means the test cannot drift from what
+// the layout code actually measures.
+func stripANSI(s string) string { return stripEscapes(s) }
+
+// A documentation reference becomes a terminal hyperlink where the terminal can
+// render one, and stays plain words where it cannot. Splicing a raw URL into
+// piped output would change what every script sees for no gain.
+func TestDocsReferenceLinksOnlyWhenStyled(t *testing.T) {
+	plain := docsRef(Palette{}, "README")
+	if plain != "README" {
+		t.Errorf("unstyled reference = %q, want plain text", plain)
 	}
-	return b.String()
+
+	linked := docsRef(Palette{enabled: true}, "README")
+	if !strings.Contains(linked, RepoURL) {
+		t.Errorf("styled reference does not carry the URL: %q", linked)
+	}
+	if !strings.Contains(linked, "\x1b]8;;") {
+		t.Errorf("styled reference is not an OSC 8 hyperlink: %q", linked)
+	}
+	// The link text still reads as the word, and occupies its width.
+	if got := visibleWidth(linked); got != len("README") {
+		t.Errorf("hyperlink measures %d columns, want %d", got, len("README"))
+	}
+	if !strings.Contains(stripEscapes(linked), "README") {
+		t.Errorf("link text lost: %q", stripEscapes(linked))
+	}
+}
+
+func TestLinkIsInertWithoutAURL(t *testing.T) {
+	p := Palette{enabled: true}
+	if got := p.Link("text", ""); got != "text" {
+		t.Errorf("Link with no URL = %q, want the text unchanged", got)
+	}
+}
+
+// Every documentation reference in terminal output points at the project, so a
+// reader can reach the explanation without first locating the source.
+func TestFootnotesLinkToTheProject(t *testing.T) {
+	rep := viewReport(t, report.Options{})
+	opts := Options{Color: Palette{enabled: true},
+		Water: water.For(rep.Overall.Tokens.Total(), water.DefaultMLPer1kTokens)}
+
+	var b strings.Builder
+	if err := Summary(&b, rep, opts); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "README") {
+		t.Fatal("the water caveat should still reference the README")
+	}
+	if strings.Count(out, RepoURL) < 1 {
+		t.Errorf("the README reference is not linked to %s", RepoURL)
+	}
 }

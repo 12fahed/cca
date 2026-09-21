@@ -15,7 +15,7 @@
     Claude Code on a subscription draws from your plan allowance instead.
   ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
   ─ 1 model had no rate and was excluded from the cost total: claude-imaginary-9.
-    Add it to pricing.json to price it.
+    Add it to pricing.json to price it; see README.
   ─ 3 records carried no cache-write TTL split; those writes were billed as
     5-minute writes, which understates any that were really 1-hour writes.
   ─ 1 request used fast mode, which bills at roughly double the standard rate.
