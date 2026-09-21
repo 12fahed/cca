@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cca/internal/config"
 )
 
 func TestRunExitCodes(t *testing.T) {
@@ -190,15 +192,24 @@ func TestWaterFlagUnsetUntilPassed(t *testing.T) {
 }
 
 // isolateConfig points config discovery at a temporary directory so the tests
-// never read the real one, and returns that directory.
+// never read the real one, and returns the directory cca will actually look in.
+//
+// That directory is resolved through config.Dir rather than assembled here: it
+// is ~/.config/cca on Unix but %APPDATA%\cca on Windows, so hardcoding either
+// shape writes the fixture somewhere the tool will not look on the other
+// platform.
 func isolateConfig(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	dir := filepath.Join(home, ".config", "cca")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+
+	dir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

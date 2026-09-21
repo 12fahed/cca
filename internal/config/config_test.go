@@ -21,7 +21,12 @@ func writeConfig(t *testing.T, body string) (dir, path string) {
 }
 
 // isolate points the config and home lookups at temporary directories so tests
-// never read or depend on the real ones.
+// never read or depend on the real ones, and returns the directory cca will
+// actually look in.
+//
+// That directory comes from Dir rather than being assembled here, because it is
+// ~/.config/cca on Unix and %APPDATA%\cca on Windows; assuming either shape
+// puts the fixture where the code under test will not find it on the other.
 func isolate(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -29,7 +34,12 @@ func isolate(t *testing.T) string {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
-	return home
+
+	dir, err := Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func ptrF(v float64) *float64 { return &v }
@@ -182,8 +192,7 @@ func TestResolveFlagFalseBeatsFileTrue(t *testing.T) {
 }
 
 func TestResolveFindsPricingOverride(t *testing.T) {
-	home := isolate(t)
-	dir := filepath.Join(home, ".config", "cca")
+	dir := isolate(t)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +207,40 @@ func TestResolveFindsPricingOverride(t *testing.T) {
 	}
 	if r.PricingPath != path {
 		t.Errorf("pricing path = %q, want %q", r.PricingPath, path)
+	}
+}
+
+// A config file written where the tests put it must be found by the lookup the
+// tool uses. Before this was pinned, the tests assembled ~/.config/cca by hand
+// and every config-driven case silently passed on Unix while failing on
+// Windows, where the directory is %APPDATA%\cca.
+func TestFixtureConfigIsWhereTheLookupLooks(t *testing.T) {
+	dir := isolate(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfigFileName),
+		[]byte(`{"water_ml_per_1k_tokens": 0.77}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filepath.Dir(path); got != dir {
+		t.Fatalf("lookup reads %q but the fixture went to %q", got, dir)
+	}
+
+	file, found, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("config at %s was not found", path)
+	}
+	if file.WaterMLPer1k == nil || *file.WaterMLPer1k != 0.77 {
+		t.Errorf("water = %v, want 0.77", file.WaterMLPer1k)
 	}
 }
 
