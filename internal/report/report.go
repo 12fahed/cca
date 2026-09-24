@@ -75,6 +75,10 @@ type Group struct {
 	// Project labels a session group with the directory it ran in.
 	Project string
 
+	// Title is the session's display name, when it has one. Display-only: no
+	// aggregation, sorting, or filtering may read it.
+	Title transcript.SessionTitle
+
 	// UnpricedTokens counts tokens whose model had no rate row. They are real
 	// usage, so they stay in Tokens; only their dollars are missing from Cost.
 	UnpricedTokens int64
@@ -219,6 +223,7 @@ func Build(recs []transcript.Record, calc *pricing.Calculator, opts Options) *Re
 
 		session := bucket(bySession, r.SessionID)
 		session.Project = r.Project
+		session.Title = opts.Stats.Titles[r.SessionID]
 		session.observe(r, cost)
 
 		// Undated records join every other grouping but cannot be placed on a

@@ -50,6 +50,7 @@ export default defineConfig({
             { label: "Time ranges", slug: "guides/time-ranges" },
             { label: "JSON and CSV output", slug: "guides/machine-output" },
             { label: "Configuration", slug: "guides/configuration" },
+            { label: "Session titles", slug: "guides/session-titles" },
             { label: "Troubleshooting", slug: "guides/troubleshooting" },
           ],
         },

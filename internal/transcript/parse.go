@@ -13,8 +13,11 @@ import (
 
 // Record types cca recognises. Everything else is skipped.
 const (
-	typeAssistant = "assistant"
-	typeCostState = "cost-state"
+	typeAssistant   = "assistant"
+	typeCostState   = "cost-state"
+	typeCustomTitle = "custom-title"
+	typeAITitle     = "ai-title"
+	typeUser        = "user"
 )
 
 // unmarshal is json.Unmarshal, named so the cost-state decoder reads the same
@@ -99,6 +102,11 @@ type Stats struct {
 	// NoDedupKey counts records with neither a message id and request id pair
 	// nor a uuid. They are kept, since dropping them would lose real spend.
 	NoDedupKey int64
+
+	// Titles maps sessionId to the resolved display title, for the sessions
+	// that have one. It rides here because it is gathered by the same pass;
+	// nothing in the cost or token path may read it.
+	Titles map[string]SessionTitle
 }
 
 // Options configures a parse run. The zero value includes sidechain traffic,
@@ -118,6 +126,12 @@ type Parser struct {
 	seen       map[string]struct{}
 	stats      Stats
 	costStates map[string]CostState
+
+	// Title collection rides along in the same streaming pass as usage, so the
+	// transcripts are read exactly once.
+	titles      map[string]*titleSet
+	firstPrompt map[string]struct{}
+	current     fileContext
 }
 
 func New(opts Options) *Parser {
@@ -126,11 +140,13 @@ func New(opts Options) *Parser {
 		nm[m] = true
 	}
 	return &Parser{
-		opts:       opts,
-		nonModels:  nm,
-		seen:       make(map[string]struct{}),
-		stats:      Stats{Skipped: make(map[string]int64)},
-		costStates: make(map[string]CostState),
+		opts:        opts,
+		nonModels:   nm,
+		seen:        make(map[string]struct{}),
+		stats:       Stats{Skipped: make(map[string]int64)},
+		costStates:  make(map[string]CostState),
+		titles:      make(map[string]*titleSet),
+		firstPrompt: make(map[string]struct{}),
 	}
 }
 
@@ -152,7 +168,9 @@ func Load(opts Options) ([]Record, Stats, error) {
 		}
 		all = append(all, recs...)
 	}
-	return all, p.Stats(), nil
+	stats := p.Stats()
+	stats.Titles = p.Titles()
+	return all, stats, nil
 }
 
 // ParseFile streams one transcript. The file is opened read-only.
@@ -163,6 +181,10 @@ func (p *Parser) ParseFile(f File) ([]Record, error) {
 	}
 	defer fh.Close()
 	p.stats.Files++
+	// Title ordering needs to know which file a record came from; see
+	// titleCandidate.beats.
+	p.current = newFileContext(f)
+	defer func() { p.current = fileContext{} }()
 	return p.ParseReader(fh, f.Project)
 }
 
@@ -212,8 +234,19 @@ func (p *Parser) parseLine(line []byte, project string) (Record, bool) {
 		return Record{}, false
 	}
 	if raw.Type != typeAssistant {
-		if raw.Type == typeCostState {
+		// Records that are not usage still carry information cca wants, and
+		// the format grows new types between Claude Code releases. Recognised
+		// ones are handled; everything else is counted as skipped rather than
+		// malformed, so a new type does not look like corruption.
+		switch raw.Type {
+		case typeCostState:
 			p.recordCostState(line)
+		case typeCustomTitle:
+			p.recordTitle(line, TitleCustom)
+		case typeAITitle:
+			p.recordTitle(line, TitleAI)
+		case typeUser:
+			p.recordFirstPrompt(line)
 		}
 		p.skip(SkipNotAssistant)
 		return Record{}, false

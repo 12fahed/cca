@@ -1,0 +1,220 @@
+package main
+
+import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// titledFixture writes a claude directory holding one session with a chosen
+// title, one with only a generated title, and one with neither.
+func titledFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+
+	usage := func(session, id string) string {
+		return `{"type":"assistant","uuid":"u` + id + `","sessionId":"` + session +
+			`","requestId":"r` + id + `","timestamp":"` + stamp +
+			`","cwd":"/demo","isSidechain":false,"message":{"id":"m` + id +
+			`","model":"claude-opus-5","usage":{"input_tokens":1000,"output_tokens":2000,` +
+			`"cache_creation_input_tokens":0,"cache_read_input_tokens":5000,` +
+			`"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}`
+	}
+
+	sessions := map[string][]string{
+		"11111111-0000-4000-8000-000000000001": {
+			`{"type":"custom-title","sessionId":"11111111-0000-4000-8000-000000000001","customTitle":"chosen session name"}`,
+			usage("11111111-0000-4000-8000-000000000001", "1"),
+		},
+		"22222222-0000-4000-8000-000000000002": {
+			`{"type":"ai-title","aiTitle":"generated session summary","sessionId":"22222222-0000-4000-8000-000000000002"}`,
+			usage("22222222-0000-4000-8000-000000000002", "2"),
+		},
+		"33333333-0000-4000-8000-000000000003": {
+			usage("33333333-0000-4000-8000-000000000003", "3"),
+		},
+	}
+	for id, lines := range sessions {
+		path := filepath.Join(dir, id+".jsonl")
+		if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func sessionsOutput(t *testing.T, dir string, extra ...string) string {
+	t.Helper()
+	args := append([]string{"--claude-dir", dir, "sessions"}, extra...)
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	return stdout.String()
+}
+
+// Tables show titles without being asked.
+func TestSessionsShowTitlesByDefault(t *testing.T) {
+	isolateConfig(t)
+	out := sessionsOutput(t, titledFixture(t))
+
+	for _, want := range []string{"Title", "chosen session name", "generated session summary"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+	// The identifier stays, shortened.
+	if !strings.Contains(out, "11111111") {
+		t.Error("short session id missing")
+	}
+	if strings.Contains(out, "11111111-0000-4000-8000-000000000001") {
+		t.Error("the table should shorten the identifier")
+	}
+}
+
+func TestNoTitlesSuppressesThemEverywhere(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	out := sessionsOutput(t, dir, "--no-titles")
+	if strings.Contains(out, "chosen session name") {
+		t.Errorf("--no-titles still showed a title:\n%s", out)
+	}
+	if !strings.Contains(out, "project") {
+		t.Error("--no-titles should restore the project column")
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", dir, "sessions", "--json", "--titles", "--no-titles"},
+		&stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "chosen session name") {
+		t.Error("--no-titles must win over --titles")
+	}
+}
+
+// Machine output carries titles only when asked, because it gets committed to
+// repositories and pasted into issues.
+func TestMachineOutputOmitsTitlesByDefault(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	for _, format := range []string{"--json", "--csv"} {
+		t.Run(format, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run([]string{"--claude-dir", dir, "sessions", format}, &stdout, &stderr); code != exitOK {
+				t.Fatalf("exit %d: %s", code, stderr.String())
+			}
+			if strings.Contains(stdout.String(), "chosen session name") {
+				t.Errorf("%s leaked a title without --titles:\n%s", format, stdout.String())
+			}
+		})
+	}
+}
+
+func TestTitlesFlagIncludesThemInJSON(t *testing.T) {
+	isolateConfig(t)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", titledFixture(t), "sessions", "--json", "--titles"},
+		&stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+
+	var doc struct {
+		Sessions []struct {
+			Key         string `json:"key"`
+			Title       string `json:"title"`
+			TitleSource string `json:"title_source"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	bySource := map[string]string{}
+	for _, s := range doc.Sessions {
+		if len(s.Key) < 36 {
+			t.Errorf("session id shortened in JSON: %q", s.Key)
+		}
+		if s.TitleSource != "" {
+			bySource[s.TitleSource] = s.Title
+		}
+	}
+	if bySource["custom"] != "chosen session name" {
+		t.Errorf("custom title = %q", bySource["custom"])
+	}
+	if bySource["ai"] != "generated session summary" {
+		t.Errorf("ai title = %q", bySource["ai"])
+	}
+}
+
+func TestTitlesFlagIncludesThemInCSV(t *testing.T) {
+	isolateConfig(t)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", titledFixture(t), "sessions", "--csv", "--titles"},
+		&stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	rows, err := csv.NewReader(strings.NewReader(stdout.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("invalid CSV: %v", err)
+	}
+	if !strings.Contains(strings.Join(rows[0], ","), "title") {
+		t.Fatalf("no title column: %v", rows[0])
+	}
+	if !strings.Contains(stdout.String(), "chosen session name") {
+		t.Error("--titles did not include the title")
+	}
+}
+
+// --verbose distinguishes a chosen name from a generated one.
+func TestVerboseShowsTitleSource(t *testing.T) {
+	isolateConfig(t)
+	out := sessionsOutput(t, titledFixture(t), "--verbose")
+	for _, want := range []string{"from", "custom", "ai"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("verbose output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// A title must never be able to move a number, which is the containment that
+// keeps the upstream title-inheritance bug from mattering.
+func TestTitlesDoNotAffectAnyFigure(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	totals := func(args ...string) string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		full := append([]string{"--claude-dir", dir, "--json"}, args...)
+		if code := run(full, &stdout, &stderr); code != exitOK {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		var doc struct {
+			Totals json.RawMessage `json:"totals"`
+		}
+		if err := json.Unmarshal([]byte(stdout.String()), &doc); err != nil {
+			t.Fatal(err)
+		}
+		return string(doc.Totals)
+	}
+
+	base := totals()
+	for _, args := range [][]string{{"--titles"}, {"--no-titles"}} {
+		if got := totals(args...); got != base {
+			t.Errorf("%v changed the totals:\n got %s\nwant %s", args, got, base)
+		}
+	}
+}

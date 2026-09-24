@@ -122,6 +122,19 @@ cca daily --csv > usage.csv
 cca sessions --top 50 --csv | column -t -s,
 ```
 
+## Session titles are opt-in
+
+Neither format includes session titles unless `--titles` is passed:
+
+```sh
+cca sessions --json --titles
+cca sessions --csv --titles
+```
+
+A title describes what you were working on, and the fallback source is your own
+prompt text, so it is not volunteered to output that ends up in repositories and
+issues. See [Session titles](/cca/guides/session-titles/).
+
 ## Neither format is ever styled
 
 Colour and hyperlinks are suppressed for `--json` and `--csv` regardless of

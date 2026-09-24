@@ -1,0 +1,10 @@
+  Claude Code usage · by session · all time
+
+  Title                                   Session      started  tokens   cost
+  refactor the billing module             aaaaaaaa  2026-09-14    1.1M  $3.46
+  Dashboard layout and chart work         bbbbbbbb  2026-09-15  881.0K  $2.61
+  a deliberately long session title tha…  cccccccc  2026-09-16  621.0K  $0.70
+  —                                       dddddddd  2026-09-16  261.0K  $0.34
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.

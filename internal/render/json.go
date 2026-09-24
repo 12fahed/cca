@@ -71,8 +71,13 @@ type costDoc struct {
 }
 
 type groupDoc struct {
-	Key            string    `json:"key,omitempty"`
-	Project        string    `json:"project,omitempty"`
+	Key     string `json:"key,omitempty"`
+	Project string `json:"project,omitempty"`
+	// Title and TitleSource appear only when --titles is passed. A title
+	// describes what someone was working on, and this output gets committed to
+	// repositories and pasted into issues, so it is opt-in rather than opt-out.
+	Title          string    `json:"title,omitempty"`
+	TitleSource    string    `json:"title_source,omitempty"`
 	Requests       int64     `json:"requests"`
 	Sessions       int       `json:"sessions,omitempty"`
 	Projects       int       `json:"projects,omitempty"`
@@ -127,19 +132,21 @@ func NewDocument(rep *report.Report, opts Options) Document {
 		View:          opts.View,
 		Window:        newWindowDoc(rep.Window),
 		Location:      rep.Location,
-		Totals:        newGroupDoc(rep.Overall),
-		Main:          newGroupDoc(rep.Main),
-		Sidechain:     newGroupDoc(rep.Sidechain),
+		Totals:        newGroupDoc(rep.Overall, false),
+		Main:          newGroupDoc(rep.Main, false),
+		Sidechain:     newGroupDoc(rep.Sidechain, false),
 		Water: waterDoc{
 			MLPer1kTokens: opts.Water.MLPer1k,
 			Millilitres:   opts.Water.Millilitres,
 			Litres:        opts.Water.Litres,
 			Equivalence:   opts.Water.Equivalence,
 		},
-		Models:        newGroupDocs(rep.ByModel),
-		Projects:      newGroupDocs(rep.ByProject),
-		Daily:         newGroupDocs(rep.ByDay),
-		Sessions:      newGroupDocs(rep.BySession),
+		Models:   newGroupDocs(rep.ByModel, false),
+		Projects: newGroupDocs(rep.ByProject, false),
+		Daily:    newGroupDocs(rep.ByDay, false),
+		// Only session groups carry a title; the other groupings are not keyed
+		// by session.
+		Sessions:      newGroupDocs(rep.BySession, opts.ShowTitles),
 		UnknownModels: nonNil(rep.UnknownModels),
 		Warnings:      newWarningDocs(rep.Warnings),
 		Diagnostics: diagnosticsDoc{
@@ -175,7 +182,7 @@ func newWindowDoc(w report.Window) windowDoc {
 	return d
 }
 
-func newGroupDoc(g report.Group) groupDoc {
+func newGroupDoc(g report.Group, titles bool) groupDoc {
 	d := groupDoc{
 		Key: g.Key, Project: g.Project, Requests: g.Requests,
 		Sessions: g.Sessions, Projects: g.Projects,
@@ -200,13 +207,17 @@ func newGroupDoc(g report.Group) groupDoc {
 		s := g.Last.Format(time.RFC3339)
 		d.Last = &s
 	}
+	if titles && g.Title.Text != "" {
+		d.Title = g.Title.Text
+		d.TitleSource = string(g.Title.Source)
+	}
 	return d
 }
 
-func newGroupDocs(gs []report.Group) []groupDoc {
+func newGroupDocs(gs []report.Group, titles bool) []groupDoc {
 	out := make([]groupDoc, 0, len(gs))
 	for _, g := range gs {
-		out = append(out, newGroupDoc(g))
+		out = append(out, newGroupDoc(g, titles))
 	}
 	return out
 }

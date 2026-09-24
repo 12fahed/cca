@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cca/internal/report"
+	"cca/internal/transcript"
 )
 
 // costCaveat is the §4.4 note. Any view that prints a dollar figure carries it:
@@ -14,6 +15,25 @@ const costCaveat = "Cost is what this usage would cost at API rates, not what yo
 	"Claude Code on a subscription draws from your plan allowance instead."
 
 const maxProjectWidth = 34
+
+// Session title column budgets. The table sizes columns to their content, so a
+// run of short titles stays narrow; these only bound the worst case.
+//
+// The project column is dropped when titles are shown, because a title usually
+// conveys the project and the sessions view has no width to spare. --verbose
+// spends a further column on the resolution source, so the title gives that
+// width back rather than pushing the view past a standard terminal.
+const (
+	maxTitleWidth        = 38
+	maxTitleWidthVerbose = 30
+)
+
+func titleBudget(opts Options) int {
+	if opts.Verbose {
+		return maxTitleWidthVerbose
+	}
+	return maxTitleWidth
+}
 
 // RepoURL is where the project documentation lives. References to the README in
 // terminal output link here, so a reader can reach the explanation without
@@ -83,21 +103,88 @@ func Daily(w io.Writer, rep *report.Report, opts Options) error {
 func Sessions(w io.Writer, rep *report.Report, opts Options) error {
 	p := opts.Color
 	return writeView(w, rep, opts, "by session", func(b *strings.Builder) {
-		t := newTable(3, "Session", "started", "project", "requests", "tokens", "cost")
+		t := sessionTable(opts)
 		for _, g := range rep.BySession {
-			started := "—"
-			if opts.ASCII {
-				started = "-"
-			}
-			if !g.First.IsZero() {
-				started = g.First.Format("2006-01-02")
-			}
-			t.add(shortID(g.Key), p.Muted(started),
-				shorten(g.Project, maxProjectWidth, opts.ASCII),
-				Count(g.Requests), p.Tokens(Tokens(g.Tokens.Total())), costCell(g, p))
+			t.add(sessionRow(g, opts)...)
 		}
 		t.withPalette(p).render(b)
 	})
+}
+
+// sessionTable builds the header for the sessions view.
+//
+// With titles on, the project column is dropped: the view is already at the
+// width of a standard terminal, a title usually says which project it was, and
+// the projects view exists for the per-directory question.
+func sessionTable(opts Options) *table {
+	if !opts.ShowTitles {
+		return newTable(3, "Session", "started", "project", "requests", "tokens", "cost")
+	}
+	if opts.Verbose {
+		return newTable(3, "Title", "Session", "from", "started", "tokens", "cost")
+	}
+	return newTable(2, "Title", "Session", "started", "tokens", "cost")
+}
+
+func sessionRow(g report.Group, opts Options) []string {
+	p := opts.Color
+	started := emDash(opts)
+	if !g.First.IsZero() {
+		started = g.First.Format("2006-01-02")
+	}
+	// The request count is dropped from the titled layout: it is the least
+	// informative of the numeric columns, and without it the view fits a
+	// standard terminal. It remains in --json and --csv.
+	tail := []string{
+		p.Muted(started),
+		p.Tokens(Tokens(g.Tokens.Total())),
+		costCell(g, p),
+	}
+
+	if !opts.ShowTitles {
+		return []string{
+			shortID(g.Key),
+			p.Muted(started),
+			shorten(g.Project, maxProjectWidth, opts.ASCII),
+			Count(g.Requests),
+			p.Tokens(Tokens(g.Tokens.Total())),
+			costCell(g, p),
+		}
+	}
+
+	// The identifier is dimmed so the title reads first, but stays present and
+	// copy-pasteable into `claude --resume`.
+	head := []string{titleCell(g, opts), p.Muted(shortID(g.Key))}
+	if opts.Verbose {
+		head = append(head, p.Muted(titleSourceLabel(g.Title.Source, opts)))
+	}
+	return append(head, tail...)
+}
+
+// titleCell renders a session's title, or a dash when it has none.
+//
+// An absent title is shown as a dash rather than an empty cell, so the row
+// still reads as a row, and never as a fabricated placeholder.
+func titleCell(g report.Group, opts Options) string {
+	text := strings.TrimSpace(g.Title.Text)
+	if text == "" {
+		return opts.Color.Muted(emDash(opts))
+	}
+	return truncateWidth(text, titleBudget(opts), opts.ASCII)
+}
+
+func titleSourceLabel(source transcript.TitleSource, opts Options) string {
+	if source == "" || source == transcript.TitleNone {
+		return emDash(opts)
+	}
+	return string(source)
+}
+
+func emDash(opts Options) string {
+	if opts.ASCII {
+		return "-"
+	}
+	return "—"
 }
 
 // writeView frames a table with the shared header, the empty-result message,

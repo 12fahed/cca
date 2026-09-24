@@ -22,7 +22,9 @@ func TestVisibleWidthIgnoresEscapes(t *testing.T) {
 		"a" + orange + "b" + reset: 2,
 		"≈ 18.0 L":                 8,
 		// A bare escape with no sequence must not swallow the text after it.
-		"\x1bplain": 6,
+		// The escape itself is a control character occupying no column, so the
+		// width is that of "plain" alone.
+		"\x1bplain": 5,
 	}
 	for in, want := range tests {
 		if got := visibleWidth(in); got != want {
