@@ -102,6 +102,11 @@ type Stats struct {
 	// NoDedupKey counts records with neither a message id and request id pair
 	// nor a uuid. They are kept, since dropping them would lose real spend.
 	NoDedupKey int64
+
+	// Titles maps sessionId to the resolved display title, for the sessions
+	// that have one. It rides here because it is gathered by the same pass;
+	// nothing in the cost or token path may read it.
+	Titles map[string]SessionTitle
 }
 
 // Options configures a parse run. The zero value includes sidechain traffic,
@@ -163,7 +168,9 @@ func Load(opts Options) ([]Record, Stats, error) {
 		}
 		all = append(all, recs...)
 	}
-	return all, p.Stats(), nil
+	stats := p.Stats()
+	stats.Titles = p.Titles()
+	return all, stats, nil
 }
 
 // ParseFile streams one transcript. The file is opened read-only.

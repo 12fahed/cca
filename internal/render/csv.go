@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cca/internal/report"
+	"cca/internal/transcript"
 )
 
 // CSV writes the rows behind the current view.
@@ -29,11 +30,20 @@ func CSV(w io.Writer, rep *report.Report, opts Options) error {
 				return []string{g.Key, strconv.FormatInt(g.Requests, 10)}
 			})
 	case ViewSessions:
-		writeCSV(out, []string{"session", "project", "started", "ended", "requests"},
-			rep.BySession, func(g report.Group) []string {
-				return []string{g.Key, g.Project, stamp(g.First), stamp(g.Last),
-					strconv.FormatInt(g.Requests, 10)}
-			})
+		// Titles are opt-in here for the same reason as in JSON: a spreadsheet
+		// of session titles describes what someone has been working on.
+		headers := []string{"session", "project", "started", "ended", "requests"}
+		if opts.ShowTitles {
+			headers = append(headers, "title", "title_source")
+		}
+		writeCSV(out, headers, rep.BySession, func(g report.Group) []string {
+			row := []string{g.Key, g.Project, stamp(g.First), stamp(g.Last),
+				strconv.FormatInt(g.Requests, 10)}
+			if opts.ShowTitles {
+				row = append(row, g.Title.Text, titleSourceValue(g.Title.Source))
+			}
+			return row
+		})
 	default:
 		// The summary and the model view share a table, so they share rows.
 		writeCSV(out, []string{"model", "requests"},
@@ -76,6 +86,15 @@ func i(v int64) string { return strconv.FormatInt(v, 10) }
 // f formats a cost at full precision rather than to cents. Rounding here would
 // stop a column of rows from summing to the total cca reports.
 func f(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+
+// titleSourceValue renders the source as a bare value, with no dash
+// substitution: a CSV consumer wants an empty field, not a glyph.
+func titleSourceValue(source transcript.TitleSource) string {
+	if source == transcript.TitleNone {
+		return ""
+	}
+	return string(source)
+}
 
 func stamp(t time.Time) string {
 	if t.IsZero() {

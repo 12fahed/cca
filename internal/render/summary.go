@@ -34,6 +34,12 @@ type Options struct {
 	View string
 	// Color styles output. The zero value writes plain text.
 	Color Palette
+	// ShowTitles renders session titles. Table views default to on; machine
+	// formats default to off, since a title describes what the user was
+	// working on and their output gets pasted into issues and committed.
+	ShowTitles bool
+	// Verbose adds the title's resolution source to the sessions view.
+	Verbose bool
 }
 
 const indent = "  "

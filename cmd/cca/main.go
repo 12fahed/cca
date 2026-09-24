@@ -66,6 +66,8 @@ type options struct {
 	noSidechains bool
 	verbose      bool
 	ascii        bool
+	titles       bool
+	noTitles     bool
 
 	// set records which flags the user actually passed. A bool flag left alone
 	// is indistinguishable from one passed as false, so without this the config
@@ -80,6 +82,22 @@ func (o *options) markSet(fs *flag.FlagSet) {
 		o.set = make(map[string]bool)
 	}
 	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
+}
+
+// showTitles decides whether session titles are rendered.
+//
+// Tables show them by default; --json and --csv do not. A title is an
+// AI-generated description of what someone was working on, and the fallback is
+// literally their prompt text, so machine output — which gets committed to
+// repositories and pasted into issues — has to be asked for explicitly.
+func (o *options) showTitles(machineFormat bool) bool {
+	switch {
+	case o.noTitles:
+		return false
+	case o.titles:
+		return true
+	}
+	return !machineFormat
 }
 
 // overrides translates the flags that were passed into config overrides,
@@ -134,6 +152,9 @@ func (o *options) register(fs *flag.FlagSet) {
 	fs.BoolVar(&o.noSidechains, "no-sidechains", false, "exclude sub-agent usage")
 	fs.BoolVar(&o.verbose, "verbose", false, "show files scanned, skipped lines, dedup stats")
 	fs.BoolVar(&o.ascii, "ascii", false, "ASCII-only output for terminals that mangle Unicode")
+	fs.BoolVar(&o.titles, "titles", false,
+		"include session titles in --json and --csv (tables show them already)")
+	fs.BoolVar(&o.noTitles, "no-titles", false, "never show session titles")
 }
 
 // optionalFloat separates "flag absent" from "flag set", so that config-file
@@ -274,6 +295,8 @@ func runView(o *options, out io.Writer, spec, name string, view viewFunc, topSes
 		return err
 	}
 
+	machineFormat := o.json || o.csv
+
 	records, stats, err := transcript.Load(transcript.Options{
 		ClaudeDir:         cfg.ClaudeDir,
 		NonModels:         table.NonModelSet(),
@@ -290,10 +313,12 @@ func runView(o *options, out io.Writer, spec, name string, view viewFunc, topSes
 	})
 
 	ropts := render.Options{
-		ASCII: cfg.ASCII,
-		Water: water.For(rep.Overall.Tokens.Total(), cfg.WaterMLPer1k),
-		View:  name,
-		Color: render.NewPalette(render.ColorOptions{Out: out, Disabled: cfg.NoColor}),
+		ASCII:      cfg.ASCII,
+		Water:      water.For(rep.Overall.Tokens.Total(), cfg.WaterMLPer1k),
+		View:       name,
+		Color:      render.NewPalette(render.ColorOptions{Out: out, Disabled: cfg.NoColor}),
+		ShowTitles: o.showTitles(machineFormat),
+		Verbose:    o.verbose,
 	}
 
 	switch {
