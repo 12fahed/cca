@@ -124,6 +124,10 @@ cca sessions --top 10
     Claude Code on a subscription draws from your plan allowance instead.
 ```
 
+Each session is shown with its title, so the table says what the work was
+rather than only which UUID it had. A session with no recorded name gets a
+dash. See [Session titles](/cca/guides/session-titles/).
+
 Session identifiers are shortened to their first segment for the table. The
 **full** identifier is available in `--json` and `--csv`, which is where you
 would use it to find the transcript file.

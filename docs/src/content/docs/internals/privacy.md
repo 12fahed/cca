@@ -61,6 +61,12 @@ says first.
 
 `--json` includes the same fields, plus full session identifiers.
 
+**Session titles are withheld from machine output by default.** A title is a
+name you chose or a model's summary of your first prompt, and where neither
+exists the fallback is your prompt text verbatim. Table views show it; `--json`
+and `--csv` require `--titles`, because that output is what gets committed and
+pasted. `--no-titles` suppresses it everywhere.
+
 ## Verifying it yourself
 
 ```sh

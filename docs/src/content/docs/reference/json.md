@@ -48,6 +48,8 @@ Used by `totals`, `main`, `sidechain`, and every array entry.
 | --- | --- | --- |
 | `key` | string | Model id, project, date, or full session id |
 | `project` | string | Present on session groups |
+| `title` | string | Session title. **Only present with `--titles`** |
+| `title_source` | string | `custom`, `ai`, or `first-prompt`. Only with `--titles` |
 | `requests` | int | Deduplicated assistant responses |
 | `sessions` | int | Distinct sessions in the group |
 | `projects` | int | Distinct projects in the group |
@@ -94,6 +96,13 @@ excluded from `total`. Adding them double-counts.
 `files`, `lines`, `records`, `duplicates`, `skipped` (by reason),
 `flat_cache_fallback`, `cache_split_mismatch`, `bad_timestamp`,
 `no_dedup_key`, `filtered_by_window`, `undated`.
+
+## Titles
+
+`title` and `title_source` appear on **session** groups only, and only when
+`--titles` is passed. The title is the full text; the table view truncates for
+display but the document does not. See
+[Session titles](/cca/guides/session-titles/).
 
 ## Stability
 

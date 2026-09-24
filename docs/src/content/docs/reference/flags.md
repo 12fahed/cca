@@ -37,6 +37,8 @@ Rejected when combined with `today`, `week`, or `month`. See
 | --- | --- | --- |
 | `--top N` | `10` | Rows in the `sessions` view |
 | `--no-sidechains` | off | Exclude sub-agent usage. It is real spend, so it is included by default |
+| `--titles` | off for `--json`/`--csv` | Include session titles in machine-readable output |
+| `--no-titles` | off | Never show session titles, in any format |
 | `--claude-dir PATH` | `~/.claude` | Read transcripts from elsewhere |
 
 ## Pricing and water
@@ -48,6 +50,11 @@ Rejected when combined with `today`, `week`, or `month`. See
 
 An explicitly named `--pricing` file must exist; a discovered one in the config
 directory may be absent, in which case the embedded table is used.
+
+Titles appear in table views without being asked for, and are left out of
+`--json` and `--csv` unless `--titles` is passed — see
+[Session titles](/cca/guides/session-titles/). `--no-titles` wins over
+`--titles`.
 
 ## Presentation
 

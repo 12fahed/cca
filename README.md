@@ -103,18 +103,17 @@ $ cca projects
 ```
 
 ```sh
-$ cca sessions --top 5
+$ cca sessions
 ```
 
 ```
   Claude Code usage · by session · all time
 
-  Session   started     project                  requests  tokens    cost
-  070d7109  2026-09-15  -home-dev-payments-api         38    7.1M  $11.09
-  7a3a8394  2026-09-08  -home-dev-infra-scripts        35    7.6M   $7.46
-  b82763ba  2026-09-07  -home-dev-infra-scripts        41    6.7M   $6.05
-  bee80626  2026-09-18  -home-dev-payments-api         26    4.9M   $6.03
-  a3a16d92  2026-09-16  -home-dev-web-dashboard        34    6.7M   $4.64
+  Title                                Session      started  tokens   cost
+  refactor: split the billing service  7c1a9f20  2026-09-14    7.2M  $9.30
+  feat: dashboard charts and filters   9c1a77b0  2026-09-14    6.0M  $8.20
+  Invoice rounding bug investigation   3ef0d219  2026-09-14    5.2M  $7.01
+  —                                    51f4fc3e  2026-09-15    2.8M  $3.42
 
   ─ Cost is what this usage would cost at API rates, not what you were billed;
     Claude Code on a subscription draws from your plan allowance instead.
@@ -140,6 +139,7 @@ identifiers, and are never styled. See
 | `--since`, `--until` | limit the time window |
 | `--top N` | rows in the `sessions` view (default 10) |
 | `--no-sidechains` | exclude sub-agent usage |
+| `--titles`, `--no-titles` | include session titles in machine output; or suppress them everywhere |
 | `--claude-dir` | read transcripts from somewhere other than `~/.claude` |
 | `--pricing` | use an alternate `pricing.json` |
 | `--water-ml-per-1k` | override the water constant |
@@ -221,6 +221,12 @@ anything under `~/.claude`**.
 Transcripts contain your source code and your conversations, so that restriction is
 enforced by tests: the directory is hashed before and after a run and must come back
 byte-identical, and the parser is checked for any file-writing call at all.
+
+**Session titles are withheld from machine output by default.** A title describes what you
+were working on, and where no title was recorded the fallback is your first prompt
+verbatim. Table views show it; `--json` and `--csv` require `--titles`, since that output
+is what gets committed to repositories and pasted into issues. `--no-titles` suppresses it
+everywhere.
 
 No telemetry. Nothing is sent anywhere. See
 [Privacy](https://12fahed.github.io/cca/internals/privacy/).
