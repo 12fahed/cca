@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // TitleSource records which of the several possible origins supplied a session's
@@ -79,7 +81,8 @@ type titleSet struct {
 }
 
 func (t *titleSet) offer(c titleCandidate) {
-	if strings.TrimSpace(c.text) == "" {
+	c.text = sanitizeTitle(c.text)
+	if c.text == "" {
 		// An empty or whitespace-only title is treated as absent, so that a
 		// cleared custom title falls through to the generated one rather than
 		// rendering a blank cell.
@@ -101,13 +104,85 @@ func (t *titleSet) offer(c titleCandidate) {
 // tested directly against a constructed candidate stream.
 func (t *titleSet) resolve() SessionTitle {
 	for _, source := range []TitleSource{TitleCustom, TitleAI, TitleFirstPrompt} {
-		if c, ok := t.best[source]; ok {
-			if text := strings.TrimSpace(c.text); text != "" {
-				return SessionTitle{Text: text, Source: source}
-			}
+		if c, ok := t.best[source]; ok && c.text != "" {
+			return SessionTitle{Text: c.text, Source: source}
 		}
 	}
 	return SessionTitle{Source: TitleNone}
+}
+
+// sanitizeTitle makes user-controlled text safe to put in a terminal table.
+//
+// Both title sources are ultimately written by the user — a custom title
+// directly, an AI title from their prompt, the fallback verbatim — so this text
+// is untrusted. Escape sequences piped into a terminal are an injection vector,
+// and control characters wreck column alignment even when they are harmless.
+//
+// The result is stored untruncated. Truncation is a rendering concern, so that
+// machine-readable output can emit the whole title.
+func sanitizeTitle(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	space := false
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			// Invalid UTF-8: drop the byte rather than emit a replacement
+			// character that would widen the cell.
+			i++
+			continue
+		}
+		i += size
+
+		switch {
+		case r == 0x1b:
+			// Start of an escape sequence; skip to its end so the payload does
+			// not survive as stray text.
+			i += skipEscape(s[i:])
+		case unicode.IsSpace(r):
+			// Newlines and tabs collapse with ordinary spaces: a title has to
+			// occupy one line.
+			space = true
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f):
+			// C0, DEL and C1 controls carry no display meaning.
+		default:
+			if space && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			space = false
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// skipEscape returns how many bytes of an escape sequence follow the ESC that
+// has already been consumed.
+func skipEscape(s string) int {
+	if s == "" {
+		return 0
+	}
+	switch s[0] {
+	case '[': // CSI, terminated by a byte in @ to ~
+		for j := 1; j < len(s); j++ {
+			if s[j] >= 0x40 && s[j] <= 0x7e {
+				return j + 1
+			}
+		}
+		return len(s)
+	case ']': // OSC, terminated by BEL or ST
+		for j := 1; j < len(s); j++ {
+			if s[j] == 0x07 {
+				return j + 1
+			}
+			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+				return j + 2
+			}
+		}
+		return len(s)
+	}
+	// A two-character sequence such as ESC c.
+	return 1
 }
 
 // Titles returns the resolved title for every session that has one.
