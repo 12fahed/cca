@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ErrNoClaudeDir reports that the Claude directory does not exist, which is
@@ -23,6 +24,9 @@ var ErrNoClaudeDir = errors.New("claude directory not found")
 // File is one transcript, tagged with the project directory that contained it.
 type File struct {
 	Path string
+	// ModTime orders title records across files, which carry no timestamp of
+	// their own. See titleCandidate.beats.
+	ModTime time.Time
 	// Project is the slugified working directory. It encodes drive letters and
 	// separators on Windows, so treat it as an opaque label and prefer a
 	// record's cwd field when a real path is needed.
@@ -65,7 +69,11 @@ func Discover(claudeDir string) ([]File, error) {
 			if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
 				return nil
 			}
-			files = append(files, File{Path: path, Project: p.Name()})
+			f := File{Path: path, Project: p.Name()}
+			if info, err := d.Info(); err == nil {
+				f.ModTime = info.ModTime()
+			}
+			files = append(files, f)
 			return nil
 		})
 	}

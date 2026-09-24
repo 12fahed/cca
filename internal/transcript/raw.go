@@ -1,5 +1,7 @@
 package transcript
 
+import "encoding/json"
+
 // The transcript format is internal to Claude Code and undocumented. These
 // types mirror only the fields cca needs; every one is optional in practice, so
 // pointers mark presence where absence and zero mean different things.
@@ -69,4 +71,51 @@ type rawCostStateUse struct {
 	CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
 	WebSearchRequests        int64   `json:"webSearchRequests"`
 	CostUSD                  float64 `json:"costUSD"`
+}
+
+// Title records are appended inline to a session's transcript. The two kinds
+// carry their text under different keys, and the key order within a record
+// varies between them, so both are decoded by field name rather than position.
+
+type rawTitle struct {
+	Type        string `json:"type"`
+	SessionID   string `json:"sessionId"`
+	CustomTitle string `json:"customTitle"`
+	AITitle     string `json:"aiTitle"`
+}
+
+// rawUserRecord is a user turn, read only for the last-resort title fallback.
+type rawUserRecord struct {
+	SessionID   string          `json:"sessionId"`
+	IsSidechain bool            `json:"isSidechain"`
+	Message     *rawUserMessage `json:"message"`
+}
+
+type rawUserMessage struct {
+	Content userContent `json:"content"`
+}
+
+// userContent is either a bare string or a list of blocks, depending on how the
+// turn was produced. A single type that accepts both keeps the caller from
+// having to know which.
+type userContent struct {
+	Text   string
+	Blocks []rawContentBlock
+}
+
+type rawContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+func (c *userContent) UnmarshalJSON(data []byte) error {
+	// Order matters: a JSON string must not be offered to the slice decoder.
+	if len(data) > 0 && data[0] == '"' {
+		return json.Unmarshal(data, &c.Text)
+	}
+	if len(data) > 0 && data[0] == '[' {
+		return json.Unmarshal(data, &c.Blocks)
+	}
+	// Anything else (null, an object) carries no prompt text; not an error.
+	return nil
 }
