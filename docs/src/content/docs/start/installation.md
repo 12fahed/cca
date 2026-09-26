@@ -37,8 +37,8 @@ cca version
 
 ```
 cca       v0.1.0
-commit    1964cd1
-built     2026-09-22T09:14:03Z
+commit    3f31cf3
+built     2026-09-27T00:44:32Z
 go        go1.27.1
 platform  linux/amd64
 license   GPL-3.0, no warranty — https://github.com/12fahed/cca/blob/main/LICENSE
@@ -59,12 +59,19 @@ alongside them.
 Download, verify, extract, install:
 
 ```sh
-curl -LO https://github.com/12fahed/cca/releases/latest/download/cca_0.1.0_linux_amd64.tar.gz
-curl -LO https://github.com/12fahed/cca/releases/latest/download/checksums.txt
+VERSION=0.1.0
+
+curl -LO https://github.com/12fahed/cca/releases/download/v$VERSION/cca_${VERSION}_linux_amd64.tar.gz
+curl -LO https://github.com/12fahed/cca/releases/download/v$VERSION/checksums.txt
+
 sha256sum --check --ignore-missing checksums.txt
-tar -xzf cca_0.1.0_linux_amd64.tar.gz
+tar -xzf cca_${VERSION}_linux_amd64.tar.gz
 sudo install -m 0755 cca /usr/local/bin/cca
 ```
+
+Archives are named `cca_<version>_<os>_<arch>`, `.tar.gz` everywhere except
+Windows which is `.zip`, and each contains the binary alongside the `README`
+and `LICENSE`.
 
 ## Build every platform at once
 

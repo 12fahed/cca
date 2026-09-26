@@ -49,7 +49,8 @@ sudo install -m 0755 cca /usr/local/bin/cca   # macOS, Linux
 
 **Or download a binary** for macOS (arm64/amd64), Linux (amd64/arm64) or Windows (amd64)
 from the [releases page](https://github.com/12fahed/cca/releases). Each is a single
-static binary with no runtime dependencies.
+static binary with no runtime dependencies, published alongside a `checksums.txt` to
+verify it against.
 
 > [!NOTE]
 > `go install` is not supported. The module path is `cca` rather than a domain-qualified

@@ -90,8 +90,8 @@ even when the Claude directory is missing — which is exactly when you need it.
 
 ```
 cca       v0.1.0
-commit    1964cd1
-built     2026-09-22T09:14:03Z
+commit    3f31cf3
+built     2026-09-27T00:44:32Z
 go        go1.27.1
 platform  linux/amd64
 license   GPL-3.0, no warranty — https://github.com/12fahed/cca/blob/main/LICENSE
