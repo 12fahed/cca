@@ -109,14 +109,15 @@ $ cca sessions
 ```
   Claude Code usage · by session · all time
 
-  Title                                Session      started  tokens   cost
-  refactor: split the billing service  7c1a9f20  2026-09-14    7.2M  $9.30
-  feat: dashboard charts and filters   9c1a77b0  2026-09-14    6.0M  $8.20
-  Invoice rounding bug investigation   3ef0d219  2026-09-14    5.2M  $7.01
-  —                                    51f4fc3e  2026-09-15    2.8M  $3.42
+  Title                                Session    water  tokens   cost
+  refactor: split the billing service  7c1a9f20   2.1 L    7.2M  $9.30
+  feat: dashboard charts and filters   9c1a77b0   1.8 L    6.0M  $8.20
+  Invoice rounding bug investigation   3ef0d219   1.6 L    5.2M  $7.01
+  —                                    51f4fc3e  841 mL    2.8M  $3.42
 
   ─ Cost is what this usage would cost at API rates, not what you were billed;
     Claude Code on a subscription draws from your plan allowance instead.
+  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
 ```
 
 ### Scripting
@@ -140,6 +141,7 @@ identifiers, and are never styled. See
 | `--top N` | rows in the `sessions` view (default 10) |
 | `--no-sidechains` | exclude sub-agent usage |
 | `--titles`, `--no-titles` | include session titles in machine output; or suppress them everywhere |
+| `--no-water` | hide the per-session water column |
 | `--claude-dir` | read transcripts from somewhere other than `~/.claude` |
 | `--pricing` | use an alternate `pricing.json` |
 | `--water-ml-per-1k` | override the water constant |
@@ -185,6 +187,10 @@ to generate the electricity. Anyone quoting a precise number is extrapolating.
 So `cca` does the least-bad thing: one constant, `0.30 mL per 1,000 tokens`, applied flat
 across every model and token class, with the assumption printed beside the result every
 single time. It is a **placeholder, not a measurement**.
+
+`cca sessions` shows each session's share of the estimate. Because the rate is flat per
+token, that column is the token column in different units — it gives a sense of scale
+rather than a separate signal, and nothing sorts or filters by it. `--no-water` hides it.
 
 If you have a figure you trust more, use it:
 

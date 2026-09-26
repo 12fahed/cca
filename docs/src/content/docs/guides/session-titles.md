@@ -11,14 +11,15 @@ the session's name alongside it.
 ```
   Claude Code usage · by session · all time
 
-  Title                                Session      started  tokens   cost
-  refactor: split the billing service  7c1a9f20  2026-09-14    7.2M  $9.30
-  feat: dashboard charts and filters   9c1a77b0  2026-09-14    6.0M  $8.20
-  Invoice rounding bug investigation   3ef0d219  2026-09-14    5.2M  $7.01
-  —                                    51f4fc3e  2026-09-15    2.8M  $3.42
+  Title                                Session    water  tokens   cost
+  refactor: split the billing service  7c1a9f20   2.1 L    7.2M  $9.30
+  feat: dashboard charts and filters   9c1a77b0   1.8 L    6.0M  $8.20
+  Invoice rounding bug investigation   3ef0d219   1.6 L    5.2M  $7.01
+  —                                    51f4fc3e  841 mL    2.8M  $3.42
 
   ─ Cost is what this usage would cost at API rates, not what you were billed;
     Claude Code on a subscription draws from your plan allowance instead.
+  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
 ```
 
 The shortened id is still there, and is still what you paste into
