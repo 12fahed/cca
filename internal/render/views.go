@@ -7,6 +7,7 @@ import (
 
 	"cca/internal/report"
 	"cca/internal/transcript"
+	"cca/internal/water"
 )
 
 // costCaveat is the §4.4 note. Any view that prints a dollar figure carries it:
@@ -28,11 +29,43 @@ const (
 	maxTitleWidthVerbose = 30
 )
 
+// sessionProjectBudget caps the project column in the untitled sessions layout.
+//
+// It is tighter than the projects view's own cap because this row also carries
+// an id, a date, and three figures. Without the cap a long slugified path
+// pushes the row past eighty columns, which it could do before the water
+// column existed too.
+func sessionProjectBudget(opts Options) int {
+	if opts.ShowWater {
+		return 24
+	}
+	return 28
+}
+
 func titleBudget(opts Options) int {
 	if opts.Verbose {
 		return maxTitleWidthVerbose
 	}
 	return maxTitleWidth
+}
+
+// showsWater reports whether the view being rendered prints a water figure.
+// Only the sessions view carries the per-row column.
+func showsWater(opts Options) bool {
+	return opts.ShowWater && opts.View == ViewSessions
+}
+
+// waterCell renders one session's share of the estimate.
+//
+// The volume only: an equivalence such as "about 2 bathtubs" is what makes a
+// single figure concrete, and repeating one down twenty rows is noise rather
+// than help.
+//
+// Note that this column is the token column in different units — water is a
+// flat rate per token — so it adds a sense of scale and no new information.
+func waterCell(g report.Group, opts Options) string {
+	est := water.For(g.Tokens.Total(), opts.Water.MLPer1k)
+	return opts.Color.Water(est.Volume())
 }
 
 // RepoURL is where the project documentation lives. References to the README in
@@ -102,6 +135,10 @@ func Daily(w io.Writer, rep *report.Report, opts Options) error {
 // is available in machine-readable output.
 func Sessions(w io.Writer, rep *report.Report, opts Options) error {
 	p := opts.Color
+	// This is the only view carrying a water column, and the footnote rule keys
+	// off that. Setting it here rather than trusting the caller keeps the
+	// caveat attached to the figure it explains.
+	opts.View = ViewSessions
 	return writeView(w, rep, opts, "by session", func(b *strings.Builder) {
 		t := sessionTable(opts)
 		for _, g := range rep.BySession {
@@ -117,11 +154,23 @@ func Sessions(w io.Writer, rep *report.Report, opts Options) error {
 // width of a standard terminal, a title usually says which project it was, and
 // the projects view exists for the per-directory question.
 func sessionTable(opts Options) *table {
-	if !opts.ShowTitles {
+	// The view has no spare width, so the water column is paid for by whichever
+	// column is least useful in that layout. With titles, that is the start
+	// date: the title identifies a session far better than a date does. Without
+	// titles, the date and project *are* the identifying columns, so the
+	// request count gives way instead. Both survive in --json and --csv, and
+	// --no-water brings the displaced column back.
+	switch {
+	case !opts.ShowTitles && opts.ShowWater:
+		return newTable(3, "Session", "started", "project", "water", "tokens", "cost")
+	case !opts.ShowTitles:
 		return newTable(3, "Session", "started", "project", "requests", "tokens", "cost")
-	}
-	if opts.Verbose {
+	case opts.Verbose && opts.ShowWater:
+		return newTable(3, "Title", "Session", "from", "water", "tokens", "cost")
+	case opts.Verbose:
 		return newTable(3, "Title", "Session", "from", "started", "tokens", "cost")
+	case opts.ShowWater:
+		return newTable(2, "Title", "Session", "water", "tokens", "cost")
 	}
 	return newTable(2, "Title", "Session", "started", "tokens", "cost")
 }
@@ -132,33 +181,34 @@ func sessionRow(g report.Group, opts Options) []string {
 	if !g.First.IsZero() {
 		started = g.First.Format("2006-01-02")
 	}
-	// The request count is dropped from the titled layout: it is the least
-	// informative of the numeric columns, and without it the view fits a
-	// standard terminal. It remains in --json and --csv.
-	tail := []string{
-		p.Muted(started),
-		p.Tokens(Tokens(g.Tokens.Total())),
-		costCell(g, p),
-	}
+	figures := []string{p.Tokens(Tokens(g.Tokens.Total())), costCell(g, p)}
 
 	if !opts.ShowTitles {
-		return []string{
+		row := []string{
 			shortID(g.Key),
 			p.Muted(started),
-			shorten(g.Project, maxProjectWidth, opts.ASCII),
-			Count(g.Requests),
-			p.Tokens(Tokens(g.Tokens.Total())),
-			costCell(g, p),
+			shorten(g.Project, sessionProjectBudget(opts), opts.ASCII),
 		}
+		if opts.ShowWater {
+			row = append(row, waterCell(g, opts))
+		} else {
+			row = append(row, Count(g.Requests))
+		}
+		return append(row, figures...)
 	}
 
 	// The identifier is dimmed so the title reads first, but stays present and
 	// copy-pasteable into `claude --resume`.
-	head := []string{titleCell(g, opts), p.Muted(shortID(g.Key))}
+	row := []string{titleCell(g, opts), p.Muted(shortID(g.Key))}
 	if opts.Verbose {
-		head = append(head, p.Muted(titleSourceLabel(g.Title.Source, opts)))
+		row = append(row, p.Muted(titleSourceLabel(g.Title.Source, opts)))
 	}
-	return append(head, tail...)
+	if opts.ShowWater {
+		row = append(row, waterCell(g, opts))
+	} else {
+		row = append(row, p.Muted(started))
+	}
+	return append(row, figures...)
 }
 
 // titleCell renders a session's title, or a dash when it has none.
@@ -205,6 +255,13 @@ func writeView(w io.Writer, rep *report.Report, opts Options, title string, body
 	body(&b)
 	b.WriteString("\n")
 	writeNoteStyled(&b, g, opts.Color, costCaveat)
+	// A view that prints a water figure owes the assumption behind it, exactly
+	// as one printing dollars owes the cost caveat. The figure rests on a
+	// placeholder constant and must never appear without saying so.
+	if showsWater(opts) {
+		writeNoteStyled(&b, g, opts.Color,
+			"Water "+opts.Water.Assumption()+". See "+docsRef(opts.Color, "README")+".")
+	}
 	if n := len(rep.UnknownModels); n > 0 {
 		writeNoteStyled(&b, g, opts.Color, fmt.Sprintf(
 			"%s had no rate and %s left out of the cost column: %s.",

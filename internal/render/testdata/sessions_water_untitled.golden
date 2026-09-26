@@ -1,0 +1,11 @@
+  Claude Code usage · by session · all time
+
+  Session   started     project   water  tokens   cost
+  aaaaaaaa  2026-09-14  api      342 mL    1.1M  $3.46
+  bbbbbbbb  2026-09-15  api      264 mL  881.0K  $2.61
+  cccccccc  2026-09-16  web      186 mL  621.0K  $0.70
+  dddddddd  2026-09-16  web       78 mL  261.0K  $0.34
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.

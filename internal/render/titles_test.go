@@ -312,3 +312,23 @@ func TestTitlesAreNeverStyledInMachineOutput(t *testing.T) {
 		}
 	}
 }
+
+// longProjectReport is the worst case for the untitled sessions layout: a
+// slugified path long enough to push the row past eighty columns if uncapped.
+func longProjectReport(t *testing.T) *report.Report {
+	t.Helper()
+	const s = "ffffffff-6666-4000-8000-000000000006"
+	recs := []transcript.Record{{
+		Model:     "claude-opus-5",
+		Project:   "-home-someone-very-long-workspace-path-with-many-segments-project",
+		SessionID: s,
+		Timestamp: ts(14, 9),
+		Usage:     usage(1_000, 40_000, 0, 200_000, 900_000),
+	}}
+	return build(t, recs, report.Options{Stats: transcript.Stats{
+		Titles: map[string]transcript.SessionTitle{
+			s: {Text: "a reasonably long session title here", Source: transcript.TitleCustom},
+		},
+		Skipped: map[string]int64{},
+	}})
+}
