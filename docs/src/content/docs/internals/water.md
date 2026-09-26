@@ -67,6 +67,57 @@ Or permanently, in `~/.config/cca/config.json`:
 The printed assumption updates to match, so the output never claims a rate it
 did not use.
 
+## Per-session water
+
+`cca sessions` shows each session's share:
+
+```
+  Claude Code usage · by session · all time
+
+  Title                                Session    water  tokens   cost
+  refactor: split the billing service  7c1a9f20   2.1 L    7.2M  $9.30
+  feat: dashboard charts and filters   9c1a77b0   1.8 L    6.0M  $8.20
+  Invoice rounding bug investigation   3ef0d219   1.6 L    5.2M  $7.01
+  —                                    51f4fc3e  841 mL    2.8M  $3.42
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+  ─ Water assumes 0.30 mL / 1k tokens, a rough estimate. See README.
+```
+
+:::note[The column is the token column rescaled]
+Water is a flat rate per token, so a session's water figure is exactly its token
+total in different units. Ranking sessions by water gives the same order as
+ranking by tokens, and the ratio between any two rows is identical in both
+columns.
+
+That is the point rather than a flaw — "2.1 L" means something to a person in a
+way "7.2M tokens" does not. But the column reveals nothing the token column did
+not, and nothing in `cca` sorts, filters, or aggregates by it.
+:::
+
+Rows carry the volume alone. An equivalence is what makes a single figure
+concrete; twenty of them down a column would be noise, so those stay on the
+summary.
+
+`--no-water` hides the column:
+
+```
+  Claude Code usage · by session · all time
+
+  Title                                Session      started  tokens   cost
+  refactor: split the billing service  7c1a9f20  2026-09-14    7.2M  $9.30
+  feat: dashboard charts and filters   9c1a77b0  2026-09-14    6.0M  $8.20
+  Invoice rounding bug investigation   3ef0d219  2026-09-14    5.2M  $7.01
+  —                                    51f4fc3e  2026-09-15    2.8M  $3.42
+
+  ─ Cost is what this usage would cost at API rates, not what you were billed;
+    Claude Code on a subscription draws from your plan allowance instead.
+```
+
+In `--json` and `--csv` the figure is always present, on every grouping, since
+those are not displays.
+
 ## The equivalences
 
 The litre figure is converted to whatever familiar unit it covers at least

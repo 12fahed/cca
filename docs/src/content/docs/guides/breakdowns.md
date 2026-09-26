@@ -134,4 +134,8 @@ would use it to find the transcript file.
 
 `--top N` limits the rows; it defaults to 10 and does not change any total.
 
-`started` is the earliest timestamp seen in that session.
+The `water` column is that session's share of the estimate. Because water is a
+flat rate per token, it is the token column in different units — it gives a
+sense of scale, not a separate signal. `--no-water` hides it and brings back
+the column it displaces (`started` with titles on, `requests` without). See
+[The water estimate](/cca/internals/water/).

@@ -40,6 +40,9 @@ type Options struct {
 	ShowTitles bool
 	// Verbose adds the title's resolution source to the sessions view.
 	Verbose bool
+	// ShowWater renders the per-session water column. The column it displaces
+	// comes back when this is off.
+	ShowWater bool
 }
 
 const indent = "  "

@@ -8,6 +8,7 @@ import (
 
 	"cca/internal/report"
 	"cca/internal/transcript"
+	"cca/internal/water"
 )
 
 // CSV writes the rows behind the current view.
@@ -18,17 +19,18 @@ import (
 // prints.
 func CSV(w io.Writer, rep *report.Report, opts Options) error {
 	out := csv.NewWriter(w)
+	rate := opts.Water.MLPer1k
 	switch opts.View {
 	case ViewProjects:
 		writeCSV(out, []string{"project", "sessions", "requests"},
 			rep.ByProject, func(g report.Group) []string {
 				return []string{g.Key, strconv.Itoa(g.Sessions), strconv.FormatInt(g.Requests, 10)}
-			})
+			}, rate)
 	case ViewDaily:
 		writeCSV(out, []string{"date", "requests"},
 			rep.ByDay, func(g report.Group) []string {
 				return []string{g.Key, strconv.FormatInt(g.Requests, 10)}
-			})
+			}, rate)
 	case ViewSessions:
 		// Titles are opt-in here for the same reason as in JSON: a spreadsheet
 		// of session titles describes what someone has been working on.
@@ -43,13 +45,13 @@ func CSV(w io.Writer, rep *report.Report, opts Options) error {
 				row = append(row, g.Title.Text, titleSourceValue(g.Title.Source))
 			}
 			return row
-		})
+		}, rate)
 	default:
 		// The summary and the model view share a table, so they share rows.
 		writeCSV(out, []string{"model", "requests"},
 			rep.ByModel, func(g report.Group) []string {
 				return []string{g.Key, strconv.FormatInt(g.Requests, 10)}
-			})
+			}, rate)
 	}
 	out.Flush()
 	return out.Error()
@@ -62,22 +64,25 @@ var tokenAndCostHeaders = []string{
 	"cache_read_tokens", "thinking_tokens", "web_searches", "total_tokens",
 	"input_usd", "output_usd", "cache_write_5m_usd", "cache_write_1h_usd",
 	"cache_read_usd", "web_search_usd", "total_usd", "unpriced_tokens",
+	"water_millilitres",
 }
 
-func writeCSV(w *csv.Writer, headers []string, groups []report.Group, lead func(report.Group) []string) {
+func writeCSV(w *csv.Writer, headers []string, groups []report.Group,
+	lead func(report.Group) []string, mlPer1k float64) {
 	_ = w.Write(append(append([]string{}, headers...), tokenAndCostHeaders...))
 	for _, g := range groups {
-		_ = w.Write(append(lead(g), tokenAndCost(g)...))
+		_ = w.Write(append(lead(g), tokenAndCost(g, mlPer1k)...))
 	}
 }
 
-func tokenAndCost(g report.Group) []string {
+func tokenAndCost(g report.Group, mlPer1k float64) []string {
 	t, c := g.Tokens, g.Cost
 	return []string{
 		i(t.Input), i(t.Output), i(t.CacheWrite5m), i(t.CacheWrite1h),
 		i(t.CacheRead), i(t.Thinking), i(t.WebSearches), i(t.Total()),
 		f(c.Input), f(c.Output), f(c.CacheWrite5m), f(c.CacheWrite1h),
 		f(c.CacheRead), f(c.WebSearch), f(c.Total), i(g.UnpricedTokens),
+		f(water.For(t.Total(), mlPer1k).Millilitres),
 	}
 }
 

@@ -56,6 +56,7 @@ Used by `totals`, `main`, `sidechain`, and every array entry.
 | `first`, `last` | string | RFC 3339 bounds, omitted when undated |
 | `tokens` | object | Exact counts |
 | `cost_usd` | object | Unrounded dollars |
+| `water` | object | `millilitres` and `litres` for this group |
 | `unpriced_tokens` | int | Tokens whose model had no rate |
 
 ### `tokens`
@@ -75,6 +76,11 @@ excluded from `total`. Adding them double-counts.
 `web_search`, `total`. The components sum to `total`.
 
 ## `water`
+
+Present at the top level for the whole run, and on **every group**. Group water
+needs no `--titles`-style opt-in: it is arithmetic on token counts rather than
+anything the user wrote. Because the rate is flat per token, a group's water is
+exactly its `tokens.total` rescaled.
 
 | Field | Type | Meaning |
 | --- | --- | --- |

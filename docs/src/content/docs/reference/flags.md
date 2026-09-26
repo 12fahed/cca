@@ -47,6 +47,7 @@ Rejected when combined with `today`, `week`, or `month`. See
 | --- | --- | --- |
 | `--pricing PATH` | embedded | Replace the rate table entirely |
 | `--water-ml-per-1k N` | `0.30` | The water constant. A placeholder, not a measurement |
+| `--no-water` | off | Hide the per-session water column, restoring the column it displaces |
 
 An explicitly named `--pricing` file must exist; a discovered one in the config
 directory may be absent, in which case the embedded table is used.

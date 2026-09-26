@@ -1,8 +1,8 @@
   Claude Code usage · by session · all time
 
-  Session   started     project                             requests  tokens     cost
-  aaaaaaaa  2026-09-14  api-server                                 2  327.6M  $472.57
-  bbbbbbbb  2026-09-15  …ified-project-directory-name-here         1  137.6M  $117.39
+  Session   started     project                       requests  tokens     cost
+  aaaaaaaa  2026-09-14  api-server                           2  327.6M  $472.57
+  bbbbbbbb  2026-09-15  …project-directory-name-here         1  137.6M  $117.39
 
   ─ Cost is what this usage would cost at API rates, not what you were billed;
     Claude Code on a subscription draws from your plan allowance instead.

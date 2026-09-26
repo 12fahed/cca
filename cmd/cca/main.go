@@ -68,6 +68,7 @@ type options struct {
 	ascii        bool
 	titles       bool
 	noTitles     bool
+	noWater      bool
 
 	// set records which flags the user actually passed. A bool flag left alone
 	// is indistinguishable from one passed as false, so without this the config
@@ -155,6 +156,8 @@ func (o *options) register(fs *flag.FlagSet) {
 	fs.BoolVar(&o.titles, "titles", false,
 		"include session titles in --json and --csv (tables show them already)")
 	fs.BoolVar(&o.noTitles, "no-titles", false, "never show session titles")
+	fs.BoolVar(&o.noWater, "no-water", false,
+		"hide the per-session water column, restoring the column it displaces")
 }
 
 // optionalFloat separates "flag absent" from "flag set", so that config-file
@@ -318,6 +321,7 @@ func runView(o *options, out io.Writer, spec, name string, view viewFunc, topSes
 		View:       name,
 		Color:      render.NewPalette(render.ColorOptions{Out: out, Disabled: cfg.NoColor}),
 		ShowTitles: o.showTitles(machineFormat),
+		ShowWater:  !o.noWater,
 		Verbose:    o.verbose,
 	}
 
