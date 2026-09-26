@@ -218,3 +218,100 @@ func TestTitlesDoNotAffectAnyFigure(t *testing.T) {
 		}
 	}
 }
+
+// Water is derived from token counts, so unlike a title it needs no opt-in in
+// machine output. --no-water is a display choice only.
+func TestWaterColumnEndToEnd(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	withWater := sessionsOutput(t, dir)
+	if !strings.Contains(withWater, "water") {
+		t.Errorf("sessions view is missing the water column:\n%s", withWater)
+	}
+	if !strings.Contains(withWater, "rough estimate") {
+		t.Error("a view printing water owes the assumption behind it")
+	}
+
+	noWater := sessionsOutput(t, dir, "--no-water")
+	if strings.Contains(noWater, "water") {
+		t.Errorf("--no-water still showed the column:\n%s", noWater)
+	}
+	if strings.Contains(noWater, "rough estimate") {
+		t.Error("with no water on screen there is no assumption to declare")
+	}
+	if !strings.Contains(noWater, "started") {
+		t.Error("--no-water should restore the column it displaced")
+	}
+}
+
+// The configured rate has to reach the per-session figures, not just the
+// summary's single number.
+func TestWaterRateReachesSessionRows(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--claude-dir", dir, "sessions", "--json",
+		"--water-ml-per-1k", "2.5"}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+
+	var doc struct {
+		Water struct {
+			MLPer1k float64 `json:"ml_per_1k_tokens"`
+		} `json:"water"`
+		Sessions []struct {
+			Tokens struct {
+				Total int64 `json:"total"`
+			} `json:"tokens"`
+			Water struct {
+				Millilitres float64 `json:"millilitres"`
+			} `json:"water"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Water.MLPer1k != 2.5 {
+		t.Errorf("rate = %v, want 2.5", doc.Water.MLPer1k)
+	}
+	for _, s := range doc.Sessions {
+		want := float64(s.Tokens.Total) / 1000 * 2.5
+		if diff := s.Water.Millilitres - want; diff > 1e-9 || diff < -1e-9 {
+			t.Errorf("session water %v, tokens imply %v", s.Water.Millilitres, want)
+		}
+	}
+}
+
+// Water is derived at render time and must not be able to move a figure.
+func TestWaterFlagsDoNotAffectCostOrTokens(t *testing.T) {
+	isolateConfig(t)
+	dir := titledFixture(t)
+
+	figures := func(args ...string) string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		full := append([]string{"--claude-dir", dir, "--json"}, args...)
+		if code := run(full, &stdout, &stderr); code != exitOK {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		var doc struct {
+			Totals struct {
+				Cost   json.RawMessage `json:"cost_usd"`
+				Tokens json.RawMessage `json:"tokens"`
+			} `json:"totals"`
+		}
+		if err := json.Unmarshal([]byte(stdout.String()), &doc); err != nil {
+			t.Fatal(err)
+		}
+		return string(doc.Totals.Cost) + string(doc.Totals.Tokens)
+	}
+
+	base := figures()
+	for _, args := range [][]string{{"--no-water"}, {"--water-ml-per-1k", "9.5"}} {
+		if got := figures(args...); got != base {
+			t.Errorf("%v changed cost or tokens:\n got %s\nwant %s", args, got, base)
+		}
+	}
+}

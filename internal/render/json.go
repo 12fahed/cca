@@ -7,6 +7,7 @@ import (
 
 	"cca/internal/pricing"
 	"cca/internal/report"
+	"cca/internal/water"
 )
 
 // jsonSchemaVersion is bumped when the document shape changes incompatibly, so
@@ -76,16 +77,25 @@ type groupDoc struct {
 	// Title and TitleSource appear only when --titles is passed. A title
 	// describes what someone was working on, and this output gets committed to
 	// repositories and pasted into issues, so it is opt-in rather than opt-out.
-	Title          string    `json:"title,omitempty"`
-	TitleSource    string    `json:"title_source,omitempty"`
-	Requests       int64     `json:"requests"`
-	Sessions       int       `json:"sessions,omitempty"`
-	Projects       int       `json:"projects,omitempty"`
-	First          *string   `json:"first,omitempty"`
-	Last           *string   `json:"last,omitempty"`
-	Tokens         tokensDoc `json:"tokens"`
-	Cost           costDoc   `json:"cost_usd"`
-	UnpricedTokens int64     `json:"unpriced_tokens,omitempty"`
+	Title       string    `json:"title,omitempty"`
+	TitleSource string    `json:"title_source,omitempty"`
+	Requests    int64     `json:"requests"`
+	Sessions    int       `json:"sessions,omitempty"`
+	Projects    int       `json:"projects,omitempty"`
+	First       *string   `json:"first,omitempty"`
+	Last        *string   `json:"last,omitempty"`
+	Tokens      tokensDoc `json:"tokens"`
+	Cost        costDoc   `json:"cost_usd"`
+	// Water is this group's share of the estimate. Unlike the title it needs no
+	// privacy gate: it is derived from token counts, not from anything the user
+	// wrote. It is a flat rate per token, so it is the token total rescaled.
+	Water          groupWaterDoc `json:"water"`
+	UnpricedTokens int64         `json:"unpriced_tokens,omitempty"`
+}
+
+type groupWaterDoc struct {
+	Millilitres float64 `json:"millilitres"`
+	Litres      float64 `json:"litres"`
 }
 
 type waterDoc struct {
@@ -127,26 +137,27 @@ func JSON(w io.Writer, rep *report.Report, opts Options) error {
 
 // NewDocument converts a report into its machine-readable form.
 func NewDocument(rep *report.Report, opts Options) Document {
+	rate := opts.Water.MLPer1k
 	return Document{
 		SchemaVersion: jsonSchemaVersion,
 		View:          opts.View,
 		Window:        newWindowDoc(rep.Window),
 		Location:      rep.Location,
-		Totals:        newGroupDoc(rep.Overall, false),
-		Main:          newGroupDoc(rep.Main, false),
-		Sidechain:     newGroupDoc(rep.Sidechain, false),
+		Totals:        newGroupDoc(rep.Overall, false, rate),
+		Main:          newGroupDoc(rep.Main, false, rate),
+		Sidechain:     newGroupDoc(rep.Sidechain, false, rate),
 		Water: waterDoc{
 			MLPer1kTokens: opts.Water.MLPer1k,
 			Millilitres:   opts.Water.Millilitres,
 			Litres:        opts.Water.Litres,
 			Equivalence:   opts.Water.Equivalence,
 		},
-		Models:   newGroupDocs(rep.ByModel, false),
-		Projects: newGroupDocs(rep.ByProject, false),
-		Daily:    newGroupDocs(rep.ByDay, false),
+		Models:   newGroupDocs(rep.ByModel, false, rate),
+		Projects: newGroupDocs(rep.ByProject, false, rate),
+		Daily:    newGroupDocs(rep.ByDay, false, rate),
 		// Only session groups carry a title; the other groupings are not keyed
 		// by session.
-		Sessions:      newGroupDocs(rep.BySession, opts.ShowTitles),
+		Sessions:      newGroupDocs(rep.BySession, opts.ShowTitles, rate),
 		UnknownModels: nonNil(rep.UnknownModels),
 		Warnings:      newWarningDocs(rep.Warnings),
 		Diagnostics: diagnosticsDoc{
@@ -182,7 +193,7 @@ func newWindowDoc(w report.Window) windowDoc {
 	return d
 }
 
-func newGroupDoc(g report.Group, titles bool) groupDoc {
+func newGroupDoc(g report.Group, titles bool, mlPer1k float64) groupDoc {
 	d := groupDoc{
 		Key: g.Key, Project: g.Project, Requests: g.Requests,
 		Sessions: g.Sessions, Projects: g.Projects,
@@ -197,6 +208,7 @@ func newGroupDoc(g report.Group, titles bool) groupDoc {
 			CacheWrite5m: g.Cost.CacheWrite5m, CacheWrite1h: g.Cost.CacheWrite1h,
 			CacheRead: g.Cost.CacheRead, WebSearch: g.Cost.WebSearch, Total: g.Cost.Total,
 		},
+		Water:          newGroupWaterDoc(g, mlPer1k),
 		UnpricedTokens: g.UnpricedTokens,
 	}
 	if !g.First.IsZero() {
@@ -214,10 +226,15 @@ func newGroupDoc(g report.Group, titles bool) groupDoc {
 	return d
 }
 
-func newGroupDocs(gs []report.Group, titles bool) []groupDoc {
+func newGroupWaterDoc(g report.Group, mlPer1k float64) groupWaterDoc {
+	est := water.For(g.Tokens.Total(), mlPer1k)
+	return groupWaterDoc{Millilitres: est.Millilitres, Litres: est.Litres}
+}
+
+func newGroupDocs(gs []report.Group, titles bool, mlPer1k float64) []groupDoc {
 	out := make([]groupDoc, 0, len(gs))
 	for _, g := range gs {
-		out = append(out, newGroupDoc(g, titles))
+		out = append(out, newGroupDoc(g, titles, mlPer1k))
 	}
 	return out
 }
